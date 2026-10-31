@@ -232,7 +232,7 @@
     }
     .nav-btn:hover, .nav-btn.active { background: #1a3d73; color: #fff; border-color: var(--primary); }
 
-    /* Modals & Full Drawers */
+    /* Modals & Drawers */
     .drawer {
       display: none;
       position: absolute;
@@ -745,12 +745,12 @@
 </head>
 <body>
 
-  <!-- PURE CODE PASSCODE & ENCRYPTION AUTH GATE -->
+  <!-- MASTER AUTHENTICATION GATEWAY -->
   <div id="authOverlay">
     <div class="auth-card">
       <div class="auth-badge">📦</div>
       <h2 id="authTitle">Sign In to Bundlex</h2>
-      <p id="authSubtitle">Enter your master password to unlock your personal AI workspace and encrypted API keys.</p>
+      <p id="authSubtitle">Enter your access password. If you are the Creator, enter your Master Admin Passkey.</p>
       
       <div class="auth-error" id="authError"></div>
 
@@ -760,7 +760,7 @@
       </div>
 
       <div class="auth-group">
-        <label>Master Password</label>
+        <label>Password / Master Passkey</label>
         <input type="password" id="authPassword" class="auth-input" placeholder="••••••••••••" />
       </div>
 
@@ -773,7 +773,7 @@
 
       <div class="auth-switch-text">
         <span id="authSwitchPrompt">Need a new personal space?</span>
-        <span id="authSwitchLink" class="auth-link">Setup Master Account</span>
+        <span id="authSwitchLink" class="auth-link">Setup New Account</span>
       </div>
     </div>
   </div>
@@ -786,12 +786,12 @@
     </div>
     <div class="top-actions">
       <button class="btn-new-chat" id="btnNewChat" title="Start fresh conversation">+ New Chat</button>
+      <button class="nav-btn" id="btnNavProfile">👤 Profile</button>
+      <button class="nav-btn" id="btnNavKeys">🔑 Keys (23)</button>
       <button class="nav-btn" id="btnNavSettings">⚙️ Settings</button>
       <button class="nav-btn" id="btnNavKB">🧠 Knowledge Base</button>
       <button class="nav-btn" id="btnNavAgents">🤖 Agents</button>
       <button class="nav-btn" id="btnNavPlugins">🧩 Tools <span id="activePluginsBadge" style="font-size:8px; background:#0284c7; color:#fff; padding:1px 4px; border-radius:3px; margin-left:2px;">1 Active</span></button>
-      <button class="nav-btn" id="btnNavProfile">👤 Profile</button>
-      <button class="nav-btn" id="btnNavKeys">🔑 Keys (23)</button>
       <button class="nav-btn" id="btnNavPrompts">💡 Prompts</button>
       <button class="nav-btn" id="btnNavHistory">📜 History</button>
     </div>
@@ -1118,12 +1118,12 @@
         <div class="prompt-card">
           <div class="prompt-top">
             <span class="prompt-title" id="dispName">User</span>
-            <span class="prompt-cat" style="background: #10b981; color: #fff;">Authenticated</span>
+            <span class="prompt-cat" id="dispRoleBadge" style="background: #10b981; color: #fff;">Authenticated</span>
           </div>
           <div class="prompt-desc" id="dispStatus">Encrypted Local Account Active</div>
         </div>
         <button class="btn-submit" id="btnLockApp" style="margin-top: 10px; background: #0284c7;">🔒 Lock Workspace Now</button>
-        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out & Reset Passcode</button>
+        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out / Switch User</button>
       </div>
     </div>
   </div>
@@ -1131,7 +1131,7 @@
   <!-- Drawer Keys: All 23 Providers + 6 Advanced Trays -->
   <div class="drawer" id="drawerKeys">
     <div class="drawer-header">
-      <span class="drawer-title">API Keys Configuration (23 Providers)</span>
+      <span class="drawer-title">API Keys Configuration (Master Admin Only)</span>
       <button class="close-btn" data-close="drawerKeys">✕</button>
     </div>
     <input type="text" id="keysSearchInput" class="search-input" placeholder="🔍 Search provider (e.g. OpenAI, Deepseek, Groq)..." />
