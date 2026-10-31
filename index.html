@@ -33,6 +33,131 @@
       position: relative;
     }
 
+    /* Fullscreen Dedicated Authentication View */
+    #authOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at center, #0e294f 0%, #071224 100%);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .auth-card {
+      background: #091528;
+      border: 1px solid #1a3e75;
+      border-radius: 12px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      text-align: center;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.97); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .auth-badge {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, #facc15, #eab308);
+      color: #000;
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      box-shadow: 0 0 14px rgba(250, 204, 21, 0.4);
+    }
+
+    .auth-card h2 {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+
+    .auth-card p {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.45;
+    }
+
+    .auth-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      text-align: left;
+    }
+
+    .auth-group label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .auth-input {
+      background: #0e2444;
+      border: 1px solid #173b6c;
+      color: #fff;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    .auth-input:focus { border-color: var(--primary); }
+
+    .auth-error {
+      font-size: 11px;
+      color: #f87171;
+      font-weight: 600;
+      min-height: 14px;
+      text-align: center;
+    }
+
+    .btn-auth-main {
+      background: #0284c7;
+      color: #fff;
+      font-weight: 700;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
+      transition: background 0.15s;
+    }
+    .btn-auth-main:hover { background: #0369a1; }
+
+    .auth-switch-text {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .auth-link {
+      color: var(--primary);
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+
+    /* Main Workspace Header */
     header {
       display: flex;
       align-items: center;
@@ -107,6 +232,7 @@
     }
     .nav-btn:hover, .nav-btn.active { background: #1a3d73; color: #fff; border-color: var(--primary); }
 
+    /* Modals & Full Drawers */
     .drawer {
       display: none;
       position: absolute;
@@ -619,6 +745,39 @@
 </head>
 <body>
 
+  <!-- PURE CODE PASSCODE & ENCRYPTION AUTH GATE -->
+  <div id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-badge">📦</div>
+      <h2 id="authTitle">Sign In to Bundlex</h2>
+      <p id="authSubtitle">Enter your master password to unlock your personal AI workspace and encrypted API keys.</p>
+      
+      <div class="auth-error" id="authError"></div>
+
+      <div class="auth-group" id="groupDisplayName" style="display: none;">
+        <label>Your Display Name</label>
+        <input type="text" id="authDisplayName" class="auth-input" placeholder="e.g. Alex Hunter" />
+      </div>
+
+      <div class="auth-group">
+        <label>Master Password</label>
+        <input type="password" id="authPassword" class="auth-input" placeholder="••••••••••••" />
+      </div>
+
+      <div class="auth-group" id="groupConfirmPassword" style="display: none;">
+        <label>Confirm Password</label>
+        <input type="password" id="authConfirmPassword" class="auth-input" placeholder="••••••••••••" />
+      </div>
+
+      <button id="btnAuthSubmit" class="btn-auth-main">Unlock Workspace</button>
+
+      <div class="auth-switch-text">
+        <span id="authSwitchPrompt">Need a new personal space?</span>
+        <span id="authSwitchLink" class="auth-link">Setup Master Account</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Top Navigation Toolbar -->
   <header>
     <div class="brand-wrap">
@@ -951,30 +1110,20 @@
   <!-- Drawer Profile -->
   <div class="drawer" id="drawerProfile">
     <div class="drawer-header">
-      <span class="drawer-title">User Profile</span>
+      <span class="drawer-title">User Account & Security</span>
       <button class="close-btn" data-close="drawerProfile">✕</button>
     </div>
     <div class="drawer-scroll-body">
-      <div id="profileFormView">
-        <div class="field">
-          <label>Display Name</label>
-          <input type="text" id="profName" placeholder="e.g. Rahul Sharma" />
-        </div>
-        <div class="field">
-          <label>Email Address</label>
-          <input type="email" id="profEmail" placeholder="name@example.com" />
-        </div>
-        <button class="btn-submit" id="btnSaveProfile">Save Profile</button>
-      </div>
-      <div id="profileSavedView" style="display: none;">
+      <div id="profileSavedView">
         <div class="prompt-card">
           <div class="prompt-top">
-            <span class="prompt-title" id="dispName">Name</span>
-            <span class="prompt-cat">Active</span>
+            <span class="prompt-title" id="dispName">User</span>
+            <span class="prompt-cat" style="background: #10b981; color: #fff;">Authenticated</span>
           </div>
-          <div class="prompt-desc" id="dispEmail">Email</div>
+          <div class="prompt-desc" id="dispStatus">Encrypted Local Account Active</div>
         </div>
-        <button class="btn-danger" id="btnSwitchProfile">Switch User / Reset</button>
+        <button class="btn-submit" id="btnLockApp" style="margin-top: 10px; background: #0284c7;">🔒 Lock Workspace Now</button>
+        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out & Reset Passcode</button>
       </div>
     </div>
   </div>
