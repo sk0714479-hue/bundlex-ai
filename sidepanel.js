@@ -42,6 +42,32 @@ if (typeof chrome === "undefined" || !chrome.storage) {
   };
 }
 
+// --- PURE CODE CRYPTOGRAPHIC PBKDF2 AUTH ENGINE ---
+async function hashPasscode(password, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+  const derivedKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: enc.encode(salt),
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  const exported = await crypto.subtle.exportKey("raw", derivedKey);
+  return Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // --- STRUCTURED PROMPT LIBRARY WITH CATEGORIES & SPECIFICATIONS ---
 const BUNDLEX_PROMPTS = [
   { cat: "Coding", spec: "Architecture", title: "Code Review & Security Audit", text: "Audit this code snippet for security vulnerabilities, race conditions, memory leaks, and performance bottlenecks. Provide the refactored version:\n\n" },
@@ -138,7 +164,7 @@ const DEFAULT_AGENTS = [
 
 // --- TOOLS CATALOG ---
 const BUNDLEX_PLUGINS = [
-  { id: "web_browser", name: "Web Browser", icon: "🌐", group: "Model tools", desc: "Allows the AI to search the internet in real-time for live 2026 data, news, and prices.", enabled: true },
+  { id: "web_browser", name: "Web Browser", icon: "🌐", group: "Model tools", desc: "Allows the AI to search the internet in real-time for live data, news, and prices.", enabled: true },
   { id: "code_sandbox", name: "Code Sandbox", icon: "⚙️", group: "Model tools", desc: "Adds rigorous unit tests, Big-O complexity audits, and defensive error traps to all code.", enabled: false },
   { id: "simple_calculator", name: "Simple Calculator", icon: "🧮", group: "Installed", desc: "Helps the AI assistant do math calculations more accurately with step-by-step arithmetic verification.", enabled: false },
   { id: "web_app_builder", name: "Web App Builder", icon: "💻", group: "Installed", desc: "Build simple web apps with HTML/CSS/JS (frontend only). Preview and self-contained code included.", enabled: false },
@@ -148,7 +174,7 @@ const BUNDLEX_PLUGINS = [
   { id: "market_news", name: "Market News", icon: "📈", group: "Store", desc: "Provides up-to-date market information and financial summaries.", enabled: false }
 ];
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // Elements
   const chatViewport = document.getElementById("chatViewport");
   const promptInput = document.getElementById("promptInput");
@@ -157,6 +183,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnNewChat = document.getElementById("btnNewChat");
   const modelPicker = document.getElementById("modelPicker");
   const modelSearch = document.getElementById("modelSearch");
+
+  // Auth Elements
+  const authOverlay = document.getElementById("authOverlay");
+  const authTitle = document.getElementById("authTitle");
+  const authSubtitle = document.getElementById("authSubtitle");
+  const authError = document.getElementById("authError");
+  const authDisplayName = document.getElementById("authDisplayName");
+  const authPassword = document.getElementById("authPassword");
+  const authConfirmPassword = document.getElementById("authConfirmPassword");
+  const btnAuthSubmit = document.getElementById("btnAuthSubmit");
+  const authSwitchPrompt = document.getElementById("authSwitchPrompt");
+  const authSwitchLink = document.getElementById("authSwitchLink");
+  const groupDisplayName = document.getElementById("groupDisplayName");
+  const groupConfirmPassword = document.getElementById("groupConfirmPassword");
 
   // Drawers
   const drawerProfile = document.getElementById("drawerProfile");
@@ -301,14 +341,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnSaveKeys = document.getElementById("btnSaveKeys");
 
   // Profile Inputs
-  const profName = document.getElementById("profName");
-  const profEmail = document.getElementById("profEmail");
-  const btnSaveProfile = document.getElementById("btnSaveProfile");
-  const btnSwitchProfile = document.getElementById("btnSwitchProfile");
-  const profileFormView = document.getElementById("profileFormView");
-  const profileSavedView = document.getElementById("profileSavedView");
   const dispName = document.getElementById("dispName");
-  const dispEmail = document.getElementById("dispEmail");
+  const btnLockApp = document.getElementById("btnLockApp");
+  const btnLogoutReset = document.getElementById("btnLogoutReset");
 
   // Prompts & Plugins UI
   const catBar = document.getElementById("catBar");
@@ -355,6 +390,113 @@ document.addEventListener("DOMContentLoaded", () => {
   let isBackgroundMode = false;
   let currentActiveAgent = null;
 
+  // --- AUTHENTICATION STATE CONTROLLER ---
+  let isSetupMode = false;
+  const authData = await chrome.storage.local.get(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName"]);
+
+  if (!authData.bundlexAuthHash) {
+    // First-time user setup
+    isSetupMode = true;
+    authTitle.textContent = "Setup Master Account";
+    authSubtitle.textContent = "Create your secure master password. This authenticates you and encrypts your local keys.";
+    groupDisplayName.style.display = "flex";
+    groupConfirmPassword.style.display = "flex";
+    btnAuthSubmit.textContent = "Create Master Key & Enter";
+    authSwitchPrompt.textContent = "Already set up?";
+    authSwitchLink.textContent = "Sign In Instead";
+  } else {
+    // Normal Login Mode
+    isSetupMode = false;
+    authTitle.textContent = "Sign In to Bundlex";
+    authSubtitle.textContent = "Enter your master password to unlock your personal workspace.";
+    groupDisplayName.style.display = "none";
+    groupConfirmPassword.style.display = "none";
+    btnAuthSubmit.textContent = "Unlock Workspace";
+    authSwitchPrompt.textContent = "Forgot or want to reset?";
+    authSwitchLink.textContent = "Reset Account";
+  }
+
+  authSwitchLink.onclick = () => {
+    authError.textContent = "";
+    if (isSetupMode) {
+      isSetupMode = false;
+      authTitle.textContent = "Sign In to Bundlex";
+      authSubtitle.textContent = "Enter your master password to unlock your workspace.";
+      groupDisplayName.style.display = "none";
+      groupConfirmPassword.style.display = "none";
+      btnAuthSubmit.textContent = "Unlock Workspace";
+      authSwitchPrompt.textContent = "Need a new personal space?";
+      authSwitchLink.textContent = "Setup Master Account";
+    } else {
+      if (confirm("Resetting account will clear all encrypted keys and local chat data. Continue?")) {
+        chrome.storage.local.remove(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName", "chatBackup"]);
+        location.reload();
+      }
+    }
+  };
+
+  btnAuthSubmit.onclick = async () => {
+    const password = authPassword.value;
+    authError.textContent = "";
+
+    if (!password || password.length < 6) {
+      authError.textContent = "Password must be at least 6 characters long.";
+      return;
+    }
+
+    if (isSetupMode) {
+      const confirmPass = authConfirmPassword.value;
+      const userName = authDisplayName.value.trim() || "User";
+
+      if (password !== confirmPass) {
+        authError.textContent = "Passwords do not match.";
+        return;
+      }
+
+      const salt = "bundlex_salt_" + Date.now();
+      const hash = await hashPasscode(password, salt);
+
+      await chrome.storage.local.set({
+        bundlexAuthHash: hash,
+        bundlexAuthSalt: salt,
+        bundlexUserName: userName
+      });
+
+      authOverlay.style.display = "none";
+      btnNavProfile.textContent = `👤 ${userName}`;
+      dispName.textContent = userName;
+    } else {
+      const storedSalt = authData.bundlexAuthSalt;
+      const expectedHash = authData.bundlexAuthHash;
+      const calculatedHash = await hashPasscode(password, storedSalt);
+
+      if (calculatedHash === expectedHash) {
+        authOverlay.style.display = "none";
+        const userName = authData.bundlexUserName || "User";
+        btnNavProfile.textContent = `👤 ${userName}`;
+        dispName.textContent = userName;
+      } else {
+        authError.textContent = "Incorrect master password. Access denied.";
+        authPassword.value = "";
+        authPassword.focus();
+      }
+    }
+  };
+
+  btnLockApp.onclick = () => {
+    drawerProfile.style.display = "none";
+    authPassword.value = "";
+    authOverlay.style.display = "flex";
+    authPassword.focus();
+  };
+
+  btnLogoutReset.onclick = () => {
+    if (confirm("This will log you out and clear stored session cache. Proceed?")) {
+      chrome.storage.local.remove(["bundlexAuthHash", "bundlexAuthSalt"]);
+      location.reload();
+    }
+  };
+
   function scrollToBottom(smooth = true) {
     if (!chatViewport) return;
     requestAnimationFrame(() => {
@@ -383,6 +525,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   window.addEventListener("keydown", (e) => {
+    if (authOverlay.style.display !== "none") {
+      if (e.key === "Enter") btnAuthSubmit.click();
+      return;
+    }
+
     if (matchShortcut(e, customShortcuts.openSearch) || (e.key === "/" && document.activeElement !== promptInput && !e.ctrlKey && !e.metaKey)) {
       e.preventDefault();
       promptInput.focus();
@@ -1351,39 +1498,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Profile
-  function syncProfile(user) {
-    if (user && user.name) {
-      btnNavProfile.textContent = `👤 ${user.name.split(" ")[0]}`;
-      profileFormView.style.display = "none";
-      profileSavedView.style.display = "block";
-      dispName.textContent = user.name;
-      dispEmail.textContent = user.email || "Offline User";
-    } else {
-      btnNavProfile.textContent = "👤 Profile";
-      profileFormView.style.display = "block";
-      profileSavedView.style.display = "none";
-    }
-  }
-
-  btnSaveProfile.onclick = () => {
-    const name = profName.value.trim();
-    const email = profEmail.value.trim();
-    if (!name) return alert("Please enter your display name.");
-    const user = { name, email };
-    chrome.storage.local.set({ userProfile: user }, () => {
-      syncProfile(user);
-      drawerProfile.style.display = "none";
-    });
-  };
-
-  btnSwitchProfile.onclick = () => {
-    chrome.storage.local.remove("userProfile", () => syncProfile(null));
-  };
-
   // Restoration
   const storageKeysToLoad = [
-    "userProfile", "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts",
+    "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts",
     ...Object.keys(keyInputsMap),
     ...Object.keys(advInputsMap)
   ];
@@ -1403,7 +1520,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (data.customShortcuts) customShortcuts = { ...customShortcuts, ...data.customShortcuts };
     syncShortcutsUI();
 
-    if (data.userProfile) syncProfile(data.userProfile);
     if (data.activeAgent) {
       currentActiveAgent = data.activeAgent;
       updateActiveAgentBanner();
