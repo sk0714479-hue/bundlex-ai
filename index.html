@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bundlex AI Studio</title>
+  <meta name="description" content="Bundlex AI Studio - Personal multi-model AI workspace, agents, knowledge base, and voice dictation.">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    
+    :root {
+      --bg-dark: #0a192f;
+      --bg-chat: #0c2340;
+      --bg-panel: #091528;
+      --border: #173b6c;
+      --primary: #38bdf8;
+      --text-white: #f8fafc;
+      --text-dark: #0f172a;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --menu-bg: #111e38;
+      --chat-font-size: 12px;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      background: var(--bg-dark);
+      color: var(--text-white);
+      overflow: hidden;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 46px;
+    }
+    .brand-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .brand-logo {
+      font-size: 13px;
+      font-weight: 900;
+      background: linear-gradient(135deg, #facc15, #eab308);
+      color: #000;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px;
+      box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+    }
+    h1 {
+      font-size: 14px;
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--primary), #facc15);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      flex-wrap: nowrap;
+    }
+    .top-actions::-webkit-scrollbar { display: none; }
+
+    .btn-new-chat {
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      padding: 5px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-new-chat:hover { background: #0369a1; }
+
+    .nav-btn {
+      background: #11294d;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      padding: 4px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .nav-btn:hover, .nav-btn.active { background: #1a3d73; color: #fff; border-color: var(--primary); }
+
+    .drawer {
+      display: none;
+      position: absolute;
+      top: 46px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-dark);
+      z-index: 100;
+      flex-direction: column;
+      padding: 12px;
+      overflow: hidden;
+    }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .drawer-title { font-size: 13px; font-weight: 700; color: var(--primary); }
+    .close-btn { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 16px; padding: 2px 6px; }
+
+    .cat-bar {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 2px 2px 8px;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+      min-height: 38px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .cat-bar::-webkit-scrollbar { height: 4px; }
+    .cat-bar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .cat-pill {
+      background: #0e2444;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      padding: 5px 10px;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .cat-pill.active, .cat-pill:hover { background: #0284c7; color: #fff; border-color: var(--primary); }
+
+    .search-input {
+      width: 100%;
+      background: #0e2444;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-bottom: 8px;
+      outline: none;
+      flex-shrink: 0;
+    }
+    .search-input:focus { border-color: var(--primary); }
+
+    .drawer-scroll-body {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #091528;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--primary);
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin: 8px 0 4px;
+      flex-shrink: 0;
+    }
+    .group-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .group-badge {
+      font-size: 9px;
+      background: #173b6c;
+      color: #93c5fd;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .prompt-card { 
+      background: #0e2444; 
+      border: 1px solid var(--border); 
+      border-radius: 6px; 
+      padding: 9px; 
+      display: flex; 
+      flex-direction: column; 
+      gap: 4px;
+      margin-bottom: 4px;
+      flex-shrink: 0;
+    }
+    .prompt-top { display: flex; justify-content: space-between; align-items: center; }
+    .prompt-title { font-size: 11px; font-weight: 700; color: #ffffff; }
+    .prompt-cat { font-size: 8px; background: #173b6c; color: #93c5fd; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; font-weight: 700; }
+    .prompt-desc { font-size: 10px; color: #94a3b8; line-height: 1.4; }
+    .prompt-actions { display: flex; gap: 5px; margin-top: 4px; }
+    .mini-btn { background: #173b6c; border: 1px solid #204c89; color: #94a3b8; padding: 3px 8px; border-radius: 4px; font-size: 9px; cursor: pointer; }
+    .mini-btn:hover { background: #0284c7; color: #fff; }
+
+    .btn-toggle-adv {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 0;
+      text-align: left;
+      margin-top: 2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .btn-toggle-adv:hover { text-decoration: underline; }
+    .adv-panel {
+      display: none;
+      background: #091528;
+      border: 1px dashed #173b6c;
+      border-radius: 6px;
+      padding: 8px;
+      margin-top: 6px;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .adv-panel.open { display: flex; }
+    .adv-label { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+
+    .connectors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+    .connector-card {
+      background: #091528;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .connector-card:hover { border-color: var(--primary); background: #0d2242; }
+    .connector-icon { font-size: 16px; }
+    .connector-name { font-size: 10px; font-weight: 700; color: #fff; }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: #0e2444;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    .setting-info { display: flex; flex-direction: column; gap: 2px; }
+    .setting-name { font-size: 11px; font-weight: 700; color: #fff; }
+    .setting-desc { font-size: 9px; color: #94a3b8; max-width: 250px; line-height: 1.3; }
+
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      background: #0e2444;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 4px;
+    }
+    .shortcut-label { font-size: 11px; color: #e2e8f0; font-weight: 600; }
+    .shortcut-select {
+      background: #091528;
+      border: 1px solid var(--border);
+      color: #38bdf8;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      outline: none;
+      width: 140px;
+    }
+
+    .field { margin-bottom: 10px; display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+    .field input, .field textarea, .field select {
+      background: #0e2444;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 7px 9px;
+      border-radius: 5px;
+      font-size: 12px;
+      outline: none;
+    }
+    .field textarea { resize: vertical; min-height: 60px; }
+    .field input:focus, .field textarea:focus { border-color: var(--primary); }
+    .btn-submit {
+      width: 100%;
+      background: #0284c7;
+      color: #fff;
+      font-weight: 700;
+      border: none;
+      padding: 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .btn-submit:hover { background: #0369a1; }
+    .btn-danger {
+      width: 100%;
+      background: var(--danger);
+      color: #fff;
+      font-weight: 700;
+      border: none;
+      padding: 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .btn-danger:hover { background: var(--danger-hover); }
+
+    #activeAgentBanner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      background: #0d2b54;
+      border-bottom: 1px solid #173b6c;
+      padding: 5px 12px;
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    #activeAgentBanner button {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #activeAgentBanner button:hover { color: #fff; }
+
+    #chatViewport {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--bg-chat);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .msg-user-container { align-self: flex-end; max-width: 88%; }
+    .msg-bubble-user {
+      background: #1e3a8a;
+      color: #ffffff;
+      padding: 9px 13px;
+      border-radius: 12px 12px 2px 12px;
+      font-size: var(--chat-font-size);
+      line-height: 1.45;
+      word-break: break-word;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .user-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px; }
+    .action-link { background: none; border: none; color: #93c5fd; font-size: 10px; cursor: pointer; padding: 2px; }
+    .action-link:hover { color: #ffffff; text-decoration: underline; }
+
+    .arena-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; width: 100%; }
+    .model-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+    .card-head {
+      background: #f1f5f9;
+      padding: 6px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .model-name { font-size: 11px; font-weight: 800; color: #0369a1; }
+    .card-controls { display: flex; align-items: center; gap: 4px; }
+    .card-copy-btn, .card-speak-btn {
+      background: #e2e8f0;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .card-copy-btn:hover, .card-speak-btn:hover { background: #cbd5e1; color: #000; }
+    .card-content {
+      padding: 10px 12px;
+      font-size: var(--chat-font-size);
+      line-height: 1.55;
+      color: #0f172a;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 38px;
+    }
+
+    .input-section {
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .selector-bar { display: flex; gap: 5px; }
+    #modelSearch { flex: 1; min-width: 80px; background: #0e2444; border: 1px solid var(--border); color: #fff; padding: 5px 7px; border-radius: 5px; font-size: 11px; outline: none; }
+    #modelPicker { flex: 2; background: #0e2444; border: 1px solid var(--border); color: #fff; padding: 5px 7px; border-radius: 5px; font-size: 11px; outline: none; }
+
+    #attachmentBadge {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      background: #0e2444;
+      border: 1px dashed var(--primary);
+      padding: 3px 6px;
+      border-radius: 5px;
+      font-size: 10px;
+      color: var(--primary);
+    }
+    #attachmentFileName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #btnDropFile { background: none; border: none; color: var(--danger); cursor: pointer; font-weight: 700; font-size: 11px; }
+
+    .popup-menu {
+      display: none;
+      position: absolute;
+      bottom: 58px;
+      background: var(--menu-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 200;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #menuFeatures { left: 10px; width: 230px; }
+    #menuThinking { left: 75px; width: 170px; }
+
+    .menu-header-label {
+      font-size: 9px;
+      font-weight: 800;
+      color: #94a3b8;
+      text-transform: uppercase;
+      padding: 8px 12px 4px;
+      letter-spacing: 0.5px;
+    }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #e2e8f0;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+    .menu-item:hover, .menu-item.active { background: #173b6c; color: #fff; }
+    .menu-item-left { display: flex; align-items: center; gap: 8px; }
+
+    .switch-ui {
+      position: relative;
+      width: 28px;
+      height: 16px;
+      background: #334155;
+      border-radius: 10px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .switch-ui.on { background: var(--primary); }
+    .switch-dot {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .switch-ui.on .switch-dot { transform: translateX(12px); }
+
+    .chat-box {
+      background: #0e2444;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .chat-box:focus-within { border-color: var(--primary); }
+    textarea#promptInput {
+      width: 100%;
+      height: 44px;
+      min-height: 44px;
+      max-height: 140px;
+      resize: none;
+      background: transparent;
+      border: none;
+      color: #fff;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.35;
+      outline: none;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .tools-group { display: flex; gap: 4px; align-items: center; }
+    .tool-icon {
+      background: #173b6c;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      padding: 4px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tool-icon:hover { color: var(--primary); background: #1f4e8e; }
+    .tool-icon.active { color: #facc15; border-color: #facc15; background: #1f4e8e; }
+    .tool-icon.recording { color: #fff; background: var(--danger); border-color: #f87171; animation: pulseRed 1s infinite alternate; }
+
+    @keyframes pulseRed {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
+
+    .action-buttons { display: flex; gap: 5px; align-items: center; }
+    #btnStop {
+      display: none;
+      background: #b91c1c;
+      color: #fff;
+      font-weight: 700;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #btnStop:hover { background: #991b1b; }
+
+    #btnStrike {
+      background: #0284c7;
+      color: #fff;
+      font-weight: 700;
+      border: none;
+      padding: 5px 14px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #btnStrike:hover { background: #0369a1; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Toolbar -->
+  <header>
+    <div class="brand-wrap">
+      <div class="brand-logo">📦</div>
+      <h1>BUNDLEX</h1>
+    </div>
+    <div class="top-actions">
+      <button class="btn-new-chat" id="btnNewChat" title="Start fresh conversation">+ New Chat</button>
+      <button class="nav-btn" id="btnNavSettings">⚙️ Settings</button>
+      <button class="nav-btn" id="btnNavKB">🧠 Knowledge Base</button>
+      <button class="nav-btn" id="btnNavAgents">🤖 Agents</button>
+      <button class="nav-btn" id="btnNavPlugins">🧩 Tools <span id="activePluginsBadge" style="font-size:8px; background:#0284c7; color:#fff; padding:1px 4px; border-radius:3px; margin-left:2px;">1 Active</span></button>
+      <button class="nav-btn" id="btnNavProfile">👤 Profile</button>
+      <button class="nav-btn" id="btnNavKeys">🔑 Keys (23)</button>
+      <button class="nav-btn" id="btnNavPrompts">💡 Prompts</button>
+      <button class="nav-btn" id="btnNavHistory">📜 History</button>
+    </div>
+  </header>
+
+  <!-- Active Agent Banner -->
+  <div id="activeAgentBanner">
+    <span id="activeAgentLabel">Active Assistant: None</span>
+    <button id="btnDismissAgent" title="Reset to standard model">✕ Clear Agent</button>
+  </div>
+
+  <!-- Drawer 0: Preferences & Settings (Includes Full Keyboard Shortcuts Customization) -->
+  <div class="drawer" id="drawerSettings">
+    <div class="drawer-header">
+      <span class="drawer-title">Preferences & General Settings</span>
+      <button class="close-btn" data-close="drawerSettings">✕</button>
+    </div>
+    <div class="drawer-scroll-body">
+      
+      <!-- Section: Keyboard Shortcuts Customizer -->
+      <div class="group-header">
+        <span class="group-title">Keyboard Shortcuts</span>
+        <span class="group-badge">Customizable</span>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Open Search / Focus Prompt</span>
+        <select class="shortcut-select" data-action="openSearch">
+          <option value="Ctrl+K" selected>Ctrl + K</option>
+          <option value="None">None</option>
+          <option value="Ctrl+F">Ctrl + F</option>
+          <option value="Ctrl+P">Ctrl + P</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">New Chat</span>
+        <select class="shortcut-select" data-action="newChat">
+          <option value="Ctrl+Alt+N" selected>Ctrl + Alt + N</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+C">Ctrl + Alt + C</option>
+          <option value="Ctrl+Alt+A">Ctrl + Alt + A</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Reset Chat</span>
+        <select class="shortcut-select" data-action="resetChat">
+          <option value="Ctrl+Alt+R" selected>Ctrl + Alt + R</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+X">Ctrl + Alt + X</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Regenerate Response</span>
+        <select class="shortcut-select" data-action="regenerate">
+          <option value="Ctrl+Alt+E" selected>Ctrl + Alt + E</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+G">Ctrl + Alt + G</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Clear Context</span>
+        <select class="shortcut-select" data-action="clearContext">
+          <option value="Ctrl+Alt+J" selected>Ctrl + Alt + J</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+D">Ctrl + Alt + D</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Toggle Tools & Plugins</span>
+        <select class="shortcut-select" data-action="togglePlugins">
+          <option value="Ctrl+Alt+P" selected>Ctrl + Alt + P</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+O">Ctrl + Alt + O</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Copy Last Message</span>
+        <select class="shortcut-select" data-action="copyLast">
+          <option value="Ctrl+Alt+C" selected>Ctrl + Alt + C</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+Y">Ctrl + Alt + Y</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Open Voice Input</span>
+        <select class="shortcut-select" data-action="openVoice">
+          <option value="Ctrl+Alt+V" selected>Ctrl + Alt + V</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+M">Ctrl + Alt + M</option>
+        </select>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Toggle Temporary Chat</span>
+        <select class="shortcut-select" data-action="toggleTemp">
+          <option value="Ctrl+Alt+T" selected>Ctrl + Alt + T</option>
+          <option value="None">None</option>
+          <option value="Ctrl+Alt+S">Ctrl + Alt + S</option>
+        </select>
+      </div>
+
+      <!-- Section: General Preferences -->
+      <div class="group-header" style="margin-top: 10px;">
+        <span class="group-title">General Preferences</span>
+        <span class="group-badge">Core</span>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Stream AI responses word-by-word</span>
+          <span class="setting-desc">Smooth typing animation during text generation.</span>
+        </div>
+        <div class="switch-ui on" id="toggleSettingStream"><div class="switch-dot"></div></div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Sound notifications</span>
+          <span class="setting-desc">Play an alert chime when responses finish generating.</span>
+        </div>
+        <div class="switch-ui on" id="toggleSettingSound"><div class="switch-dot"></div></div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Enter to send message</span>
+          <span class="setting-desc">Press Enter to send (use Shift+Enter for a new line).</span>
+        </div>
+        <div class="switch-ui on" id="toggleSettingEnter"><div class="switch-dot"></div></div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Reopen previous chat on startup</span>
+          <span class="setting-desc">Automatically restores your last conversation session.</span>
+        </div>
+        <div class="switch-ui on" id="toggleSettingResume"><div class="switch-dot"></div></div>
+      </div>
+
+      <!-- Section: Appearance -->
+      <div class="group-header">
+        <span class="group-title">Appearance & Customization</span>
+        <span class="group-badge">Visual</span>
+      </div>
+
+      <div class="field">
+        <label>Theme Accent Color</label>
+        <select id="settingAccentColor">
+          <option value="#38bdf8" selected>Sky Blue (Default)</option>
+          <option value="#10b981">Emerald Green</option>
+          <option value="#a855f7">Electric Violet</option>
+          <option value="#f59e0b">Amber Gold</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Chat Font Size</label>
+        <select id="settingFontSize">
+          <option value="11px">Compact (11px)</option>
+          <option value="12px" selected>Normal (12px)</option>
+          <option value="13px">Large (13px)</option>
+          <option value="14px">Extra Large (14px)</option>
+        </select>
+      </div>
+
+      <!-- Section: Speech & Audio Settings -->
+      <div class="group-header">
+        <span class="group-title">Text-to-Speech & Voice Input</span>
+        <span class="group-badge">Audio</span>
+      </div>
+
+      <div class="field">
+        <label>Speech Output Pitch</label>
+        <input type="range" id="settingVoicePitch" min="0.5" max="1.5" step="0.1" value="1.0" />
+      </div>
+
+      <div class="field">
+        <label>Speech Output Speed</label>
+        <input type="range" id="settingVoiceRate" min="0.5" max="2.0" step="0.1" value="1.0" />
+      </div>
+
+      <!-- Section: Data Management -->
+      <div class="group-header">
+        <span class="group-title">Data & Storage Management</span>
+        <span class="group-badge">Backup</span>
+      </div>
+
+      <div style="display: flex; gap: 6px; margin-top: 4px;">
+        <button class="btn-submit" id="btnExportChats" style="margin: 0; flex: 1;">📥 Export Chats (JSON)</button>
+        <input type="file" id="importChatFile" style="display: none;" accept=".json" />
+        <button class="btn-submit" id="btnImportChats" style="margin: 0; flex: 1; background: #1e3a8a;">📤 Import Backup</button>
+      </div>
+      <button class="btn-danger" id="btnResetSettings">⚠️ Reset All Preferences & Shortcuts</button>
+    </div>
+  </div>
+
+  <!-- Drawer KB: Knowledge Base Studio -->
+  <div class="drawer" id="drawerKB">
+    <div class="drawer-header">
+      <span class="drawer-title">Knowledge Base Studio (Data & App Integrations)</span>
+      <button class="close-btn" data-close="drawerKB">✕</button>
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+      <input type="file" id="kbFileInput" style="display: none;" multiple accept=".txt,.pdf,.md,.csv,.json,.html,.doc,.docx" />
+      <button class="btn-submit" id="btnUploadKBFile" style="margin: 0; flex: 1;">📂 Upload Files (PDF, Word, CSV, MD)</button>
+      <button class="btn-submit" id="btnOpenAddKB" style="margin: 0; flex: 1; background: #1e3a8a;">+ Connect App / URL</button>
+    </div>
+
+    <!-- Connected Data Sources Selector Grid (18 Apps) -->
+    <div class="connectors-grid" id="connectorsGrid">
+      <div class="connector-card" data-app="Google Drive"><span class="connector-icon">📁</span><span class="connector-name">Google Drive</span></div>
+      <div class="connector-card" data-app="Notion"><span class="connector-icon">📓</span><span class="connector-name">Notion</span></div>
+      <div class="connector-card" data-app="GitHub"><span class="connector-icon">🐙</span><span class="connector-name">GitHub</span></div>
+      <div class="connector-card" data-app="Dropbox"><span class="connector-icon">📦</span><span class="connector-name">Dropbox</span></div>
+      <div class="connector-card" data-app="OneDrive"><span class="connector-icon">☁️</span><span class="connector-name">OneDrive</span></div>
+      <div class="connector-card" data-app="SharePoint"><span class="connector-icon">🏢</span><span class="connector-name">SharePoint</span></div>
+      <div class="connector-card" data-app="Box"><span class="connector-icon">📥</span><span class="connector-name">Box</span></div>
+      <div class="connector-card" data-app="Intercom"><span class="connector-icon">💬</span><span class="connector-name">Intercom</span></div>
+      <div class="connector-card" data-app="Confluence"><span class="connector-icon">📘</span><span class="connector-name">Confluence</span></div>
+      <div class="connector-card" data-app="Slack"><span class="connector-icon">👥</span><span class="connector-name">Slack Channels</span></div>
+      <div class="connector-card" data-app="Discord"><span class="connector-icon">🎮</span><span class="connector-name">Discord</span></div>
+      <div class="connector-card" data-app="Zendesk"><span class="connector-icon">🎧</span><span class="connector-name">Zendesk KB</span></div>
+      <div class="connector-card" data-app="Jira"><span class="connector-icon">🎯</span><span class="connector-name">Jira Issues</span></div>
+      <div class="connector-card" data-app="HubSpot"><span class="connector-icon">🟠</span><span class="connector-name">HubSpot CRM</span></div>
+      <div class="connector-card" data-app="Salesforce"><span class="connector-icon">⚡</span><span class="connector-name">Salesforce</span></div>
+      <div class="connector-card" data-app="AWS S3"><span class="connector-icon">🪣</span><span class="connector-name">AWS S3</span></div>
+      <div class="connector-card" data-app="Obsidian"><span class="connector-icon">💎</span><span class="connector-name">Obsidian</span></div>
+      <div class="connector-card" data-app="Web Scraper"><span class="connector-icon">🕷️</span><span class="connector-name">Web Scraper</span></div>
+    </div>
+
+    <div id="addKBForm" style="display: none; background: #091528; padding: 10px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 10px;">
+      <div class="field">
+        <label>Entry / Connection Title</label>
+        <input type="text" id="kbDocTitle" placeholder="e.g. Engineering Handbook or Notion Workspace" />
+      </div>
+      <div class="field">
+        <label>Data Source / App Type</label>
+        <input type="text" id="kbDocCategory" placeholder="e.g. Google Drive, Notion, Notes" />
+      </div>
+      <div class="field">
+        <label>URL / Content / Access Secret</label>
+        <textarea id="kbDocContent" placeholder="Paste data text, documentation content, or URL feed for AI agents to reference..."></textarea>
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn-submit" id="btnSaveKBDoc">Store in Knowledge Base</button>
+        <button class="mini-btn" id="btnCancelAddKB" style="flex: none; padding: 0 12px;">Cancel</button>
+      </div>
+    </div>
+
+    <input type="text" id="kbSearchInput" class="search-input" placeholder="🔍 Search indexed documents, files & app records..." />
+    <div class="drawer-scroll-body" id="kbContainer"></div>
+  </div>
+
+  <!-- Drawer Agents: Custom AI Assistants -->
+  <div class="drawer" id="drawerAgents">
+    <div class="drawer-header">
+      <span class="drawer-title">Custom AI Assistants & Agents</span>
+      <button class="close-btn" data-close="drawerAgents">✕</button>
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+      <button class="btn-submit" id="btnOpenCreateAgent" style="margin: 0; flex: 1;">+ Create New Agent</button>
+      <button class="mini-btn" id="btnCancelCreateAgent" style="display: none;">Cancel</button>
+    </div>
+
+    <div id="createAgentForm" style="display: none; background: #091528; padding: 10px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 10px;">
+      <div class="field">
+        <label>Agent Name</label>
+        <input type="text" id="newAgentName" placeholder="e.g. Legal Contract Reviewer" />
+      </div>
+      <div class="field">
+        <label>Icon / Emoji</label>
+        <input type="text" id="newAgentIcon" placeholder="e.g. ⚖️" style="width: 60px;" value="🤖" />
+      </div>
+      <div class="field">
+        <label>Category / Specialization</label>
+        <input type="text" id="newAgentCategory" placeholder="e.g. Legal & Contracts" />
+      </div>
+      <div class="field">
+        <label>Custom Instructions (System Persona)</label>
+        <textarea id="newAgentInstructions" placeholder="Define how this agent must behave, analyze, and format responses..."></textarea>
+      </div>
+      <div class="field">
+        <label>Assigned Tool Directive</label>
+        <select id="newAgentAssignedTool">
+          <option value="none">Standard Execution</option>
+          <option value="web">Web Browser & Live Search</option>
+          <option value="code">Code Sandbox & Debugger</option>
+          <option value="calc">Simple Calculator</option>
+          <option value="chart">Render Chart & Tables</option>
+        </select>
+      </div>
+      <button class="btn-submit" id="btnSaveNewAgent">Save & Deploy Agent</button>
+    </div>
+
+    <input type="text" id="agentSearchInput" class="search-input" placeholder="🔍 Search customized AI assistants..." />
+    <div class="drawer-scroll-body" id="agentsContainer"></div>
+  </div>
+
+  <!-- Drawer Tools: Plugins & Model Tools Store -->
+  <div class="drawer" id="drawerPlugins">
+    <div class="drawer-header">
+      <span class="drawer-title">Tools & Extended Functions Store</span>
+      <button class="close-btn" data-close="drawerPlugins">✕</button>
+    </div>
+    <input type="text" id="pluginSearchInput" class="search-input" placeholder="🔍 Search all tools (e.g. calculator, charts, web builder)..." />
+    <div class="drawer-scroll-body" id="pluginsContainer"></div>
+  </div>
+
+  <!-- Drawer Profile -->
+  <div class="drawer" id="drawerProfile">
+    <div class="drawer-header">
+      <span class="drawer-title">User Profile</span>
+      <button class="close-btn" data-close="drawerProfile">✕</button>
+    </div>
+    <div class="drawer-scroll-body">
+      <div id="profileFormView">
+        <div class="field">
+          <label>Display Name</label>
+          <input type="text" id="profName" placeholder="e.g. Rahul Sharma" />
+        </div>
+        <div class="field">
+          <label>Email Address</label>
+          <input type="email" id="profEmail" placeholder="name@example.com" />
+        </div>
+        <button class="btn-submit" id="btnSaveProfile">Save Profile</button>
+      </div>
+      <div id="profileSavedView" style="display: none;">
+        <div class="prompt-card">
+          <div class="prompt-top">
+            <span class="prompt-title" id="dispName">Name</span>
+            <span class="prompt-cat">Active</span>
+          </div>
+          <div class="prompt-desc" id="dispEmail">Email</div>
+        </div>
+        <button class="btn-danger" id="btnSwitchProfile">Switch User / Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer Keys: All 23 Providers + 6 Advanced Trays -->
+  <div class="drawer" id="drawerKeys">
+    <div class="drawer-header">
+      <span class="drawer-title">API Keys Configuration (23 Providers)</span>
+      <button class="close-btn" data-close="drawerKeys">✕</button>
+    </div>
+    <input type="text" id="keysSearchInput" class="search-input" placeholder="🔍 Search provider (e.g. OpenAI, Deepseek, Groq)..." />
+    <div class="drawer-scroll-body" id="keysListContainer">
+      <div class="field key-item-field" data-name="openai chatgpt">
+        <label>OpenAI (ChatGPT)</label>
+        <input type="password" id="inputOpenAI" placeholder="sk-..." />
+        <button type="button" class="btn-toggle-adv" data-target="advOpenAI">▸ Show advanced options</button>
+        <div class="adv-panel" id="advOpenAI">
+          <span class="adv-label">Organization ID</span>
+          <input type="text" id="advOpenAIOrg" placeholder="org-xxxxxxxxxxxxxxxxxxxxxxxx" />
+          <span class="adv-label">Project ID</span>
+          <input type="text" id="advOpenAIProject" placeholder="proj_xxxxxxxxxxxxxxxxxxxxxxxx" />
+          <span class="adv-label">Chat Completions Endpoint URL</span>
+          <input type="text" id="advOpenAIEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+          <span class="adv-label">Responses API Endpoint</span>
+          <input type="text" id="advOpenAIResponses" placeholder="https://api.openai.com/v1/responses" />
+          <span class="adv-label">Default Model Override</span>
+          <select id="advOpenAIModel">
+            <option value="gpt-4o-mini" selected>GPT-4o-mini</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="o1-preview">o1-preview (Reasoning)</option>
+            <option value="o1-mini">o1-mini (Reasoning)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field key-item-field" data-name="anthropic claude">
+        <label>Anthropic (Claude)</label>
+        <input type="password" id="inputClaude" placeholder="sk-ant-..." />
+        <button type="button" class="btn-toggle-adv" data-target="advClaude">▸ Show advanced options</button>
+        <div class="adv-panel" id="advClaude">
+          <span class="adv-label">Endpoint URL</span>
+          <input type="text" id="advClaudeEndpoint" placeholder="https://api.anthropic.com/v1/messages" />
+          <span class="adv-label">Model Override</span>
+          <select id="advClaudeModel">
+            <option value="claude-3-5-sonnet-20241022" selected>Claude 3.5 Sonnet</option>
+            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field key-item-field" data-name="google gemini">
+        <label>Google (Gemini)</label>
+        <input type="password" id="inputGemini" placeholder="AIzaSy..." />
+        <button type="button" class="btn-toggle-adv" data-target="advGoogle">▸ Show advanced options</button>
+        <div class="adv-panel" id="advGoogle">
+          <span class="adv-label">Custom API Base Endpoint</span>
+          <input type="text" id="advGoogleEndpoint" placeholder="https://generativelanguage.googleapis.com" />
+          <span class="adv-label">Preferred Gemini Model</span>
+          <select id="advGoogleModel">
+            <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+            <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field key-item-field" data-name="openrouter"><label>OpenRouter</label><input type="password" id="inputOpenRouter" placeholder="sk-or-v1-..." /></div>
+      <div class="field key-item-field" data-name="spacexai xai grok"><label>SpaceXAI (xAI / Grok)</label><input type="password" id="inputSpaceXAI" placeholder="xai-..." /></div>
+      <div class="field key-item-field" data-name="deepseek"><label>Deepseek</label><input type="password" id="inputDeepseek" placeholder="sk-..." /></div>
+      <div class="field key-item-field" data-name="moonshot kimi"><label>Moonshot (Kimi)</label><input type="password" id="inputMoonshot" placeholder="sk-..." /></div>
+      <div class="field key-item-field" data-name="z.ai zai zhipu"><label>Z.AI (Zhipu)</label><input type="password" id="inputZAI" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="meta llama"><label>Meta (Llama API)</label><input type="password" id="inputMeta" placeholder="API Key / Token..." /></div>
+      <div class="field key-item-field" data-name="mistral"><label>Mistral</label><input type="password" id="inputMistral" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="groq"><label>Groq (Ultra-Fast)</label><input type="password" id="inputGroq" placeholder="gsk_..." /></div>
+      <div class="field key-item-field" data-name="perplexity ai"><label>Perplexity AI</label><input type="password" id="inputPerplexity" placeholder="pplx-..." /></div>
+      <div class="field key-item-field" data-name="fireworks ai"><label>Fireworks AI</label><input type="password" id="inputFireworks" placeholder="fw_..." /></div>
+      <div class="field key-item-field" data-name="deepinfra"><label>Deepinfra</label><input type="password" id="inputDeepinfra" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="vercel ai gateway"><label>Vercel AI Gateway</label><input type="password" id="inputVercel" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="chutes"><label>Chutes</label><input type="password" id="inputChutes" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="alibaba cloud qwen">
+        <label>Alibaba Cloud (Qwen)</label>
+        <input type="password" id="inputAlibaba" placeholder="API Key..." />
+        <button type="button" class="btn-toggle-adv" data-target="advAlibaba">▸ Show advanced options</button>
+        <div class="adv-panel" id="advAlibaba">
+          <span class="adv-label">Custom Compatible Endpoint</span>
+          <input type="text" id="advAlibabaEndpoint" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" />
+          <span class="adv-label">Default Qwen Model</span>
+          <input type="text" id="advAlibabaModel" placeholder="qwen-plus" />
+        </div>
+      </div>
+      <div class="field key-item-field" data-name="ollama cloud">
+        <label>Ollama Cloud</label>
+        <input type="password" id="inputOllamaCloud" placeholder="API Key..." />
+        <button type="button" class="btn-toggle-adv" data-target="advOllama">▸ Show advanced options</button>
+        <div class="adv-panel" id="advOllama">
+          <span class="adv-label">Custom Ollama Base URL</span>
+          <input type="text" id="advOllamaEndpoint" placeholder="http://localhost:11434" />
+        </div>
+      </div>
+      <div class="field key-item-field" data-name="opencode go">
+        <label>OpenCode Go</label>
+        <input type="password" id="inputOpenCodeGo" placeholder="API Key..." />
+        <button type="button" class="btn-toggle-adv" data-target="advOpenCode">▸ Show advanced options</button>
+        <div class="adv-panel" id="advOpenCode">
+          <span class="adv-label">Chat Endpoint</span>
+          <input type="text" id="advOpenCodeChatEndpoint" placeholder="https://opencode.ai/zen/go/v1/chat/completions" />
+          <span class="adv-label">Responses Endpoint</span>
+          <input type="text" id="advOpenCodeResponsesEndpoint" placeholder="https://opencode.ai/zen/go/v1/responses" />
+          <span class="adv-label">Anthropic Messages Endpoint</span>
+          <input type="text" id="advOpenCodeAnthropicEndpoint" placeholder="https://opencode.ai/zen/go/v1/messages" />
+        </div>
+      </div>
+      <div class="field key-item-field" data-name="minimax"><label>MiniMax</label><input type="password" id="inputMiniMax" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="xiaomi"><label>Xiaomi</label><input type="password" id="inputXiaomi" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="novita ai"><label>Novita</label><input type="password" id="inputNovita" placeholder="API Key..." /></div>
+      <div class="field key-item-field" data-name="sakana ai">
+        <label>Sakana AI</label>
+        <input type="password" id="inputSakana" placeholder="API Key..." />
+        <button type="button" class="btn-toggle-adv" data-target="advSakana">▸ Show advanced options</button>
+        <div class="adv-panel" id="advSakana">
+          <span class="adv-label">Sakana Base URL</span>
+          <input type="text" id="advSakanaEndpoint" placeholder="https://api.sakana.ai/v1" />
+        </div>
+      </div>
+    </div>
+    <button class="btn-submit" id="btnSaveKeys" style="margin-top: 8px;">Save All Keys & Options</button>
+  </div>
+
+  <!-- Drawer Prompts -->
+  <div class="drawer" id="drawerPrompts">
+    <div class="drawer-header">
+      <span class="drawer-title">Structured Prompt Library</span>
+      <button class="close-btn" data-close="drawerPrompts">✕</button>
+    </div>
+    <div class="cat-bar" id="catBar">
+      <span class="cat-pill active" data-cat="all">All (200)</span>
+      <span class="cat-pill" data-cat="Coding">Coding</span>
+      <span class="cat-pill" data-cat="Study">Academic</span>
+      <span class="cat-pill" data-cat="Work">Workplace</span>
+      <span class="cat-pill" data-cat="Business">Strategy</span>
+      <span class="cat-pill" data-cat="Writing">Writing</span>
+      <span class="cat-pill" data-cat="Marketing">Marketing</span>
+      <span class="cat-pill" data-cat="Finance">Finance</span>
+      <span class="cat-pill" data-cat="Sports">Fitness</span>
+      <span class="cat-pill" data-cat="Fun">Entertainment</span>
+      <span class="cat-pill" data-cat="Productivity">Productivity</span>
+    </div>
+    <input type="text" id="promptSearchInput" class="search-input" placeholder="🔍 Search specifications and prompts..." />
+    <div class="drawer-scroll-body" id="promptsList"></div>
+  </div>
+
+  <!-- Drawer History -->
+  <div class="drawer" id="drawerHistory">
+    <div class="drawer-header">
+      <span class="drawer-title">Conversation History</span>
+      <button class="close-btn" data-close="drawerHistory">✕</button>
+    </div>
+    <div class="drawer-scroll-body" id="historyBackupContainer"></div>
+    <button class="btn-danger" id="btnClearHistory" style="flex-shrink: 0;">🗑️ Clear All Saved History</button>
+  </div>
+
+  <!-- Blue Chat Viewport -->
+  <div id="chatViewport"></div>
+
+  <!-- Bottom Workspace Controls -->
+  <div class="input-section">
+    <div class="popup-menu" id="menuFeatures">
+      <div class="menu-header-label">Quick Actions</div>
+      <button class="menu-item" id="itemAgents"><div class="menu-item-left"><span>🤖</span> Switch Assistant</div></button>
+      <button class="menu-item" id="itemKB"><div class="menu-item-left"><span>🧠</span> Manage Knowledge Base</div></button>
+      <button class="menu-item" id="itemPrompts"><div class="menu-item-left"><span>📖</span> Prompt Library</div></button>
+      <button class="menu-item" id="itemUpload"><div class="menu-item-left"><span>📎</span> Upload Files</div></button>
+      <div class="menu-header-label" style="border-top:1px solid var(--border); margin-top:4px;">Execution Directives</div>
+      <div class="menu-item" id="toggleKB">
+        <div class="menu-item-left"><span>🧠</span> Connect Knowledge Base</div>
+        <div class="switch-ui" id="switchKB"><div class="switch-dot"></div></div>
+      </div>
+      <div class="menu-item" id="toggleThinking">
+        <div class="menu-item-left"><span>💡</span> Deep Thinking Mode</div>
+        <div class="switch-ui on" id="switchThinking"><div class="switch-dot"></div></div>
+      </div>
+      <div class="menu-item" id="toggleBackground">
+        <div class="menu-item-left"><span>⏱️</span> Background Execution</div>
+        <div class="switch-ui" id="switchBackground"><div class="switch-dot"></div></div>
+      </div>
+    </div>
+
+    <div class="popup-menu" id="menuThinking">
+      <div class="menu-header-label">Reasoning Effort</div>
+      <button class="menu-item effort-item" data-effort="low"><div class="menu-item-left"><span>^</span> Low</div></button>
+      <button class="menu-item effort-item active" data-effort="medium"><div class="menu-item-left"><span>^^</span> Medium</div></button>
+      <button class="menu-item effort-item" data-effort="high"><div class="menu-item-left"><span>^^^</span> High</div></button>
+      <button class="menu-item effort-item" data-effort="extra"><div class="menu-item-left"><span>⚡</span> Extra High</div></button>
+    </div>
+
+    <div class="selector-bar">
+      <input type="text" id="modelSearch" placeholder="🔍 Search models..." />
+      <select id="modelPicker">
+        <option value="gemini_direct" selected>Google Gemini (Direct)</option>
+        <option value="compare_all">⚡ Compare All 3 (Claude + GPT + Gemini)</option>
+        <option value="openai_direct">ChatGPT (OpenAI Direct)</option>
+        <option value="claude_direct">Claude 3.5 Sonnet (Direct)</option>
+        <option value="openrouter/free">Free Models (via OpenRouter)</option>
+      </select>
+    </div>
+
+    <div id="attachmentBadge">
+      <span>📎</span>
+      <span id="attachmentFileName">file.png</span>
+      <button id="btnDropFile">✕</button>
+    </div>
+
+    <div class="chat-box">
+      <textarea id="promptInput" placeholder="Press '/' or Ctrl+K to focus, Enter to send..."></textarea>
+      <div class="toolbar">
+        <div class="tools-group">
+          <button class="tool-icon" id="btnPlusMenu" title="Quick Features Menu">+</button>
+          <input type="file" id="filePicker" style="display: none;" accept="image/*,.txt,.pdf,.md,.csv,.json" />
+          <button class="tool-icon" id="btnAttachFile" title="Attach file">📎</button>
+          <button class="tool-icon" id="btnGrabTab" title="Attach active tab link">🔗</button>
+          <button class="tool-icon" id="btnSpeechToText" title="Voice Input (Speech-to-Text)">🎙️</button>
+          <button class="tool-icon active" id="btnThinkingMenu" title="Reasoning Effort">💡</button>
+        </div>
+        <div class="action-buttons">
+          <button id="btnStop">⏹ Stop</button>
+          <button id="btnStrike">⚡ Strike</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
