@@ -42,7 +42,11 @@ if (typeof chrome === "undefined" || !chrome.storage) {
   };
 }
 
-// --- PURE CODE CRYPTOGRAPHIC PBKDF2 AUTH ENGINE ---
+// --- MASTER ADMIN SECRET PASSKEY ---
+// Only you know this key. Entering this in the password box grants full Master Admin access.
+const BUNDLEX_MASTER_SECRET = "BUNDLEX-MASTER-2026";
+
+// --- CRYPTOGRAPHIC HASH ENGINE (PBKDF2) ---
 async function hashPasscode(password, salt) {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -342,6 +346,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Profile Inputs
   const dispName = document.getElementById("dispName");
+  const dispRoleBadge = document.getElementById("dispRoleBadge");
+  const dispStatus = document.getElementById("dispStatus");
   const btnLockApp = document.getElementById("btnLockApp");
   const btnLogoutReset = document.getElementById("btnLogoutReset");
 
@@ -390,93 +396,140 @@ document.addEventListener("DOMContentLoaded", async () => {
   let isBackgroundMode = false;
   let currentActiveAgent = null;
 
-  // --- AUTHENTICATION STATE CONTROLLER ---
-  let isSetupMode = false;
-  const authData = await chrome.storage.local.get(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName"]);
+  // --- ROLE PERMISSION ENFORCER (ADMIN VS USER) ---
+  function applyRolePermissions(role, userName) {
+    if (role === "admin") {
+      btnNavProfile.textContent = "👑 Master Admin";
+      btnNavKeys.style.display = "inline-flex"; // Admin gets full access to API keys
+      btnNavSettings.style.display = "inline-flex";
+      dispName.textContent = userName || "Master Admin (Creator)";
+      dispRoleBadge.textContent = "👑 Creator (Admin)";
+      dispRoleBadge.style.background = "#eab308";
+      dispRoleBadge.style.color = "#000";
+      dispStatus.textContent = "Full administrative access, key vault, and engine controls unlocked.";
+    } else {
+      btnNavProfile.textContent = "👤 " + (userName || "User");
+      btnNavKeys.style.display = "none"; // Hide sensitive Keys panel from visitors
+      btnNavSettings.style.display = "inline-flex";
+      dispName.textContent = userName || "Standard User";
+      dispRoleBadge.textContent = "👤 Standard User";
+      dispRoleBadge.style.background = "#38bdf8";
+      dispRoleBadge.style.color = "#000";
+      dispStatus.textContent = "Standard guest access. Key management is restricted to Creator.";
+    }
+  }
 
-  if (!authData.bundlexAuthHash) {
-    // First-time user setup
+  // --- DUAL-AUTHENTICATION STATE CONTROLLER ---
+  let isSetupMode = false;
+  const authData = await chrome.storage.local.get(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName", "bundlexRole"]);
+
+  if (!authData.bundlexAuthHash && !authData.bundlexRole) {
     isSetupMode = true;
-    authTitle.textContent = "Setup Master Account";
-    authSubtitle.textContent = "Create your secure master password. This authenticates you and encrypts your local keys.";
+    authTitle.textContent = "Setup Personal Account";
+    authSubtitle.textContent = "Create your personal user space. If you are the Creator, enter your Master Passkey.";
     groupDisplayName.style.display = "flex";
     groupConfirmPassword.style.display = "flex";
-    btnAuthSubmit.textContent = "Create Master Key & Enter";
-    authSwitchPrompt.textContent = "Already set up?";
+    btnAuthSubmit.textContent = "Unlock & Enter";
+    authSwitchPrompt.textContent = "Already have an account?";
     authSwitchLink.textContent = "Sign In Instead";
   } else {
-    // Normal Login Mode
     isSetupMode = false;
     authTitle.textContent = "Sign In to Bundlex";
-    authSubtitle.textContent = "Enter your master password to unlock your personal workspace.";
+    authSubtitle.textContent = "Enter your password or Creator Master Passkey to unlock the studio.";
     groupDisplayName.style.display = "none";
     groupConfirmPassword.style.display = "none";
     btnAuthSubmit.textContent = "Unlock Workspace";
-    authSwitchPrompt.textContent = "Forgot or want to reset?";
-    authSwitchLink.textContent = "Reset Account";
+    authSwitchPrompt.textContent = "Need a new account?";
+    authSwitchLink.textContent = "Create Account";
   }
 
   authSwitchLink.onclick = () => {
     authError.textContent = "";
+    isSetupMode = !isSetupMode;
     if (isSetupMode) {
-      isSetupMode = false;
+      authTitle.textContent = "Setup Personal Account";
+      authSubtitle.textContent = "Create your personal user space or enter Master Passkey.";
+      groupDisplayName.style.display = "flex";
+      groupConfirmPassword.style.display = "flex";
+      btnAuthSubmit.textContent = "Unlock & Enter";
+      authSwitchPrompt.textContent = "Already have an account?";
+      authSwitchLink.textContent = "Sign In";
+    } else {
       authTitle.textContent = "Sign In to Bundlex";
-      authSubtitle.textContent = "Enter your master password to unlock your workspace.";
+      authSubtitle.textContent = "Enter your password or Creator Master Passkey.";
       groupDisplayName.style.display = "none";
       groupConfirmPassword.style.display = "none";
       btnAuthSubmit.textContent = "Unlock Workspace";
-      authSwitchPrompt.textContent = "Need a new personal space?";
-      authSwitchLink.textContent = "Setup Master Account";
-    } else {
-      if (confirm("Resetting account will clear all encrypted keys and local chat data. Continue?")) {
-        chrome.storage.local.remove(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName", "chatBackup"]);
-        location.reload();
-      }
+      authSwitchPrompt.textContent = "Need a new account?";
+      authSwitchLink.textContent = "Create Account";
     }
   };
 
   btnAuthSubmit.onclick = async () => {
-    const password = authPassword.value;
+    const password = authPassword.value.trim();
+    const displayName = authDisplayName.value.trim() || "User";
     authError.textContent = "";
 
-    if (!password || password.length < 6) {
-      authError.textContent = "Password must be at least 6 characters long.";
+    if (!password) {
+      authError.textContent = "Please enter your password or Master Passkey.";
       return;
     }
 
-    if (isSetupMode) {
-      const confirmPass = authConfirmPassword.value;
-      const userName = authDisplayName.value.trim() || "User";
+    // 1. MASTER ADMIN BYPASS (Owner enters secret key)
+    if (password === BUNDLEX_MASTER_SECRET) {
+      await chrome.storage.local.set({
+        bundlexRole: "admin",
+        bundlexUserName: displayName.toLowerCase() === "user" ? "Creator (Master)" : displayName
+      });
+      applyRolePermissions("admin", displayName.toLowerCase() === "user" ? "Creator (Master)" : displayName);
+      authOverlay.style.display = "none";
+      return;
+    }
 
+    // 2. STANDARD USER SETUP & VERIFICATION
+    if (isSetupMode) {
+      const confirmPass = authConfirmPassword.value.trim();
       if (password !== confirmPass) {
         authError.textContent = "Passwords do not match.";
         return;
       }
-
       const salt = "bundlex_salt_" + Date.now();
       const hash = await hashPasscode(password, salt);
-
       await chrome.storage.local.set({
         bundlexAuthHash: hash,
         bundlexAuthSalt: salt,
-        bundlexUserName: userName
+        bundlexRole: "user",
+        bundlexUserName: displayName
       });
-
+      applyRolePermissions("user", displayName);
       authOverlay.style.display = "none";
-      btnNavProfile.textContent = `👤 ${userName}`;
-      dispName.textContent = userName;
     } else {
       const storedSalt = authData.bundlexAuthSalt;
       const expectedHash = authData.bundlexAuthHash;
-      const calculatedHash = await hashPasscode(password, storedSalt);
 
-      if (calculatedHash === expectedHash) {
+      if (!expectedHash) {
+        // No account stored yet on this browser, register as standard user
+        const salt = "bundlex_salt_" + Date.now();
+        const hash = await hashPasscode(password, salt);
+        await chrome.storage.local.set({
+          bundlexAuthHash: hash,
+          bundlexAuthSalt: salt,
+          bundlexRole: "user",
+          bundlexUserName: displayName
+        });
+        applyRolePermissions("user", displayName);
         authOverlay.style.display = "none";
-        const userName = authData.bundlexUserName || "User";
-        btnNavProfile.textContent = `👤 ${userName}`;
-        dispName.textContent = userName;
+        return;
+      }
+
+      const calculatedHash = await hashPasscode(password, storedSalt);
+      if (calculatedHash === expectedHash) {
+        const role = authData.bundlexRole || "user";
+        const name = authData.bundlexUserName || "User";
+        applyRolePermissions(role, name);
+        authOverlay.style.display = "none";
       } else {
-        authError.textContent = "Incorrect master password. Access denied.";
+        authError.textContent = "Incorrect password. Try again or enter Master Passkey.";
         authPassword.value = "";
         authPassword.focus();
       }
@@ -491,8 +544,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   btnLogoutReset.onclick = () => {
-    if (confirm("This will log you out and clear stored session cache. Proceed?")) {
-      chrome.storage.local.remove(["bundlexAuthHash", "bundlexAuthSalt"]);
+    if (confirm("Log out of this session? (You can sign back in as Master or User).")) {
+      chrome.storage.local.remove(["bundlexRole"]);
       location.reload();
     }
   };
@@ -1498,9 +1551,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Restoration
+  // Initial Key & Settings Restoration
   const storageKeysToLoad = [
-    "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts",
+    "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts", "bundlexRole", "bundlexUserName",
     ...Object.keys(keyInputsMap),
     ...Object.keys(advInputsMap)
   ];
@@ -1513,6 +1566,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     Object.keys(advInputsMap).forEach(k => {
       if (data[k] && advInputsMap[k]) advInputsMap[k].value = data[k];
     });
+
+    if (data.bundlexRole) {
+      applyRolePermissions(data.bundlexRole, data.bundlexUserName);
+    }
 
     if (data.userSettings) userSettings = { ...userSettings, ...data.userSettings };
     syncSettingsUI();
@@ -1548,7 +1605,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     chrome.storage.local.set(dataToSave).then(() => {
-      alert("All 23 Provider keys and advanced options saved successfully!");
+      alert("All Provider keys and options saved securely by Master Admin!");
       drawerKeys.style.display = "none";
     });
   };
@@ -1731,7 +1788,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // API Engines
   async function callGemini(prompt, fileData, key, bodyEl, signal) {
     if (!key) {
-      bodyEl.textContent = "⚠️ Missing Gemini Key. Click 🔑 Keys to save it.";
+      bodyEl.textContent = "⚠️ Missing Gemini Key. Master Admin needs to save it under 🔑 Keys.";
       return;
     }
     bodyEl.textContent = "⚡ Searching web & generating response...";
@@ -1828,7 +1885,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function callOpenAI(prompt, fileData, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenAI Key. Click 🔑 Keys to save it.");
+    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenAI Key. Master Admin needs to save it.");
     bodyEl.textContent = "⚡ Calling OpenAI...";
     scrollToBottom(true);
 
@@ -1882,7 +1939,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function callClaude(prompt, fileData, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing Claude Key. Click 🔑 Keys to save it.");
+    if (!key) return (bodyEl.textContent = "⚠️ Missing Claude Key. Master Admin needs to save it.");
     bodyEl.textContent = "⚡ Calling Claude...";
     scrollToBottom(true);
 
@@ -1927,7 +1984,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function callOpenRouter(prompt, modelId, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenRouter Key. Click 🔑 Keys to save it.");
+    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenRouter Key. Master Admin needs to save it.");
     bodyEl.textContent = "⚡ Calling OpenRouter...";
     scrollToBottom(true);
     try {
