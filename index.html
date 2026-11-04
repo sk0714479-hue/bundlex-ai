@@ -33,16 +33,17 @@
       position: relative;
     }
 
-    /* Fullscreen Dedicated Authentication View */
+    /* Modern Modal Authentication View */
     #authOverlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: radial-gradient(circle at center, #0e294f 0%, #071224 100%);
+      background: rgba(7, 18, 36, 0.85);
+      backdrop-filter: blur(8px);
       z-index: 9999;
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       padding: 16px;
@@ -51,22 +52,35 @@
     .auth-card {
       background: #091528;
       border: 1px solid #1a3e75;
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 28px 24px;
       width: 100%;
       max-width: 380px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       text-align: center;
-      animation: fadeIn 0.25s ease-out;
+      position: relative;
+      animation: fadeIn 0.22s ease-out;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.97); }
+      from { opacity: 0; transform: scale(0.96); }
       to { opacity: 1; transform: scale(1); }
     }
+
+    .auth-close {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .auth-close:hover { color: #fff; }
 
     .auth-badge {
       width: 44px;
@@ -93,6 +107,28 @@
       font-size: 11px;
       color: #94a3b8;
       line-height: 1.45;
+    }
+
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid #173b6c;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+    .auth-tab {
+      flex: 1;
+      text-align: center;
+      padding: 7px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .auth-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
     }
 
     .auth-group {
@@ -131,6 +167,14 @@
       text-align: center;
     }
 
+    .auth-success {
+      font-size: 11px;
+      color: #34d399;
+      font-weight: 600;
+      min-height: 14px;
+      text-align: center;
+    }
+
     .btn-auth-main {
       background: #0284c7;
       color: #fff;
@@ -144,6 +188,19 @@
       transition: background 0.15s;
     }
     .btn-auth-main:hover { background: #0369a1; }
+
+    .btn-auth-guest {
+      background: transparent;
+      border: 1px dashed #173b6c;
+      color: #94a3b8;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-auth-guest:hover { color: #fff; border-color: var(--primary); }
 
     .auth-switch-text {
       font-size: 11px;
@@ -746,18 +803,30 @@
 </head>
 <body>
 
-  <!-- MASTER AUTHENTICATION GATEWAY -->
+  <!-- MASTER AUTHENTICATION & LOGIN GATEWAY -->
   <div id="authOverlay">
     <div class="auth-card">
+      <button class="auth-close" id="btnAuthClose" title="Close">✕</button>
       <div class="auth-badge">📦</div>
       <h2 id="authTitle">Sign In to Bundlex</h2>
-      <p id="authSubtitle">Enter your access password. If you are the Creator, enter your Master Admin Passkey.</p>
+      <p id="authSubtitle">Enter your credentials or test the workspace instantly as a guest.</p>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabSignIn">Sign In</div>
+        <div class="auth-tab" id="tabSignUp">Create Account</div>
+      </div>
       
       <div class="auth-error" id="authError"></div>
+      <div class="auth-success" id="authSuccess"></div>
 
       <div class="auth-group" id="groupDisplayName" style="display: none;">
-        <label>Your Display Name</label>
-        <input type="text" id="authDisplayName" class="auth-input" placeholder="e.g. Alex Hunter" />
+        <label>Display Name</label>
+        <input type="text" id="authDisplayName" class="auth-input" placeholder="e.g. Sunny" />
+      </div>
+
+      <div class="auth-group" id="groupEmail">
+        <label>Your Email / Username</label>
+        <input type="text" id="authEmail" class="auth-input" placeholder="you@domain.com" />
       </div>
 
       <div class="auth-group">
@@ -770,7 +839,8 @@
         <input type="password" id="authConfirmPassword" class="auth-input" placeholder="••••••••••••" />
       </div>
 
-      <button id="btnAuthSubmit" class="btn-auth-main">Unlock Workspace</button>
+      <button id="btnAuthSubmit" class="btn-auth-main">Sign In</button>
+      <button id="btnContinueGuest" class="btn-auth-guest">⚡ Continue as Guest (No Setup Required)</button>
 
       <div class="auth-switch-text">
         <span id="authSwitchPrompt">Need a new personal space?</span>
@@ -1123,8 +1193,9 @@
           </div>
           <div class="prompt-desc" id="dispStatus">Encrypted Local Account Active</div>
         </div>
-        <button class="btn-submit" id="btnLockApp" style="margin-top: 10px; background: #0284c7;">🔒 Lock Workspace Now</button>
-        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out / Switch User</button>
+        <button class="btn-submit" id="btnOpenAuthModal" style="margin-top: 10px;">🔐 Switch / Register Account</button>
+        <button class="btn-submit" id="btnLockApp" style="margin-top: 6px; background: #0284c7;">🔒 Lock Workspace Now</button>
+        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out / Clear Session</button>
       </div>
     </div>
   </div>
@@ -1324,7 +1395,8 @@
     <div class="selector-bar">
       <input type="text" id="modelSearch" placeholder="🔍 Search models..." />
       <select id="modelPicker">
-        <option value="gemini_direct" selected>Google Gemini (Direct)</option>
+        <option value="bundlex_free" selected>⚡ Bundlex Free AI (No Key Needed)</option>
+        <option value="gemini_direct">Google Gemini (Direct)</option>
         <option value="compare_all">⚡ Compare All 3 (Claude + GPT + Gemini)</option>
         <option value="openai_direct">ChatGPT (OpenAI Direct)</option>
         <option value="claude_direct">Claude 3.5 Sonnet (Direct)</option>
