@@ -1431,5 +1431,19 @@
   </div>
 
   <script src="sidepanel.js"></script>
+  <!-- BUNDLEX ARTIFACTS / LIVE CANVAS VIEWER -->
+<div id="canvasModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; backdrop-filter:blur(6px); flex-direction:column;">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#161b22; border-bottom:1px solid #30363d; color:#e6edf3;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="font-size:18px;">⚡</span>
+      <strong style="font-size:15px;">Bundlex Live Preview</strong>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button id="openNewTabBtn" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; padding:6px 14px; border-radius:6px; cursor:pointer;">Open in New Tab</button>
+      <button onclick="document.getElementById('canvasModal').style.display='none'" style="background:#da3633; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">Close ✕</button>
+    </div>
+  </div>
+  <iframe id="canvasFrame" sandbox="allow-scripts allow-modals allow-same-origin" style="flex:1; width:100%; border:none; background:#ffffff;"></iframe>
+</div>
 </body>
 </html>
