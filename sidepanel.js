@@ -183,7 +183,13 @@ async function fetchLiveWebContext(query) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout
 
-    const cleanQuery = encodeURIComponent(query.slice(0, 100));
+    // Normalize prompt and fix common typo variations
+    const sanitized = query
+      .replace(/\[.*?\]/g, "")
+      .replace(/cham\[?i?o?n?s?\s*league/i, "champions league")
+      .trim();
+
+    const cleanQuery = encodeURIComponent(sanitized.slice(0, 100));
     const searchUrl = `https://api.duckduckgo.com/?q=${cleanQuery}&format=json&no_html=1&skip_disambig=1`;
     
     const res = await fetch(searchUrl, { signal: controller.signal });
@@ -199,7 +205,7 @@ async function fetchLiveWebContext(query) {
 
       if (Array.isArray(data.RelatedTopics)) {
         const topSnippets = data.RelatedTopics
-          .filter(t => t.Text)
+          .filter(t => t && t.Text)
           .slice(0, 3)
           .map(t => `- ${t.Text} [Link: ${t.FirstURL || ""}]`)
           .join("\n");
@@ -1915,14 +1921,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // --- MULTI-TIER RESILIENT FREE AI ENGINE WITH LIVE WEB & IMAGE GENERATION ---
   async function callFreeAI(prompt, bodyEl, signal) {
-    const trimmed = prompt.trim();
+    // Clean user query and remove internal plugin tags
+    const cleanUserPrompt = prompt.replace(/\[.*?\]/gs, "").trim();
 
     // 1. Broad Image Generation Interceptor (Instant high-res images)
     const imgRegex = /^(?:generate|draw|create|make|paint|render)?\s*(?:an?\s+)?(?:image|photo|picture|graphic|illustration|art)\s+(?:of\s+)?|^(?:draw|paint|sketch)\s+/i;
-    if (imgRegex.test(trimmed)) {
+    if (imgRegex.test(cleanUserPrompt)) {
       bodyEl.textContent = "🎨 Generating high-definition visual...";
       scrollToBottom(true);
-      const cleanSubject = trimmed.replace(imgRegex, '').trim();
+      const cleanSubject = cleanUserPrompt.replace(imgRegex, '').trim();
       const seed = Math.floor(Math.random() * 100000);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanSubject)}?width=1024&height=1024&seed=${seed}&nologo=true`;
 
@@ -1937,19 +1944,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    // 2. Live Web Grounding for Search / News / Fact Lookups
+    // 2. Live Web Grounding for Search / News / Fact Lookups (With Typo-Tolerance)
     let webContext = "";
-    const isSearchQuery = /^(who|what|when|where|why|how|latest|news|price|score|vs|match|current|today)\b/i.test(trimmed);
+    const isSearchQuery = /^(who|what|when|where|why|how|latest|news|price|score|winner|won|vs|match|current|today)\b/i.test(cleanUserPrompt) || cleanUserPrompt.includes("?");
     if (isSearchQuery) {
       bodyEl.textContent = "🌐 Searching across live web sources...";
       scrollToBottom(true);
-      webContext = await fetchLiveWebContext(trimmed);
+      webContext = await fetchLiveWebContext(cleanUserPrompt);
     }
 
     const systemPrompt = 
       "You are Bundlex Free AI, an intelligent, verified assistant inside Bundlex AI Studio. " +
       "Today's year is 2026. Deliver concise, accurate, verified facts. " +
       "Lamine Yamal is a Spanish international footballer playing as a winger for FC Barcelona. " +
+      "The 2024-25 UEFA Champions League concluded in May 2025. " +
       (webContext ? "Use the provided [LIVE SEARCH DATA] to answer with real-time grounding and cite URLs when relevant. " : "") +
       "If the user asks for runnable code, interactive apps, or games, write the full single-file code wrapped inside ```html ... ``` blocks.";
 
