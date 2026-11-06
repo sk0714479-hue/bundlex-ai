@@ -177,6 +177,43 @@ const BUNDLEX_PLUGINS = [
   { id: "market_news", name: "Market News", icon: "📈", group: "Store", desc: "Provides up-to-date market information and financial summaries.", enabled: false }
 ];
 
+// --- 10-SECOND MULTI-SOURCE WEB GROUNDING ENGINE ---
+async function fetchLiveWebContext(query) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout
+
+    const cleanQuery = encodeURIComponent(query.slice(0, 100));
+    const searchUrl = `https://api.duckduckgo.com/?q=${cleanQuery}&format=json&no_html=1&skip_disambig=1`;
+    
+    const res = await fetch(searchUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      let context = "";
+
+      if (data.AbstractText) {
+        context += `\n- [Primary Result]: ${data.AbstractText} (Source: ${data.AbstractURL || data.AbstractSource || "Web"})`;
+      }
+
+      if (Array.isArray(data.RelatedTopics)) {
+        const topSnippets = data.RelatedTopics
+          .filter(t => t.Text)
+          .slice(0, 3)
+          .map(t => `- ${t.Text} [Link: ${t.FirstURL || ""}]`)
+          .join("\n");
+        if (topSnippets) context += `\n${topSnippets}`;
+      }
+
+      return context.trim() ? `\n\n[LIVE SEARCH DATA]:\n${context}` : "";
+    }
+  } catch (err) {
+    console.warn("Live web search fetch skipped or timed out:", err);
+  }
+  return "";
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   // Elements
   const chatViewport = document.getElementById("chatViewport");
@@ -1243,7 +1280,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             };
           }
         } else {
-          // Fallback if modal HTML is not present
+          // Direct new tab fallback
           const blob = new Blob([rawCode], { type: "text/html" });
           const url = URL.createObjectURL(blob);
           window.open(url, "_blank");
@@ -1876,12 +1913,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     enhanceAssistantCardWithRunner(element, fullText);
   }
 
-  // --- MULTI-TIER RESILIENT FREE AI ENGINE ---
+  // --- MULTI-TIER RESILIENT FREE AI ENGINE WITH LIVE WEB & IMAGE GENERATION ---
   async function callFreeAI(prompt, bodyEl, signal) {
     const trimmed = prompt.trim();
 
-    // 1. Instant Image Generation Interceptor
-    const imgRegex = /^(generate|draw|create|make|paint)\s+(an?\s+)?(image|photo|picture|graphic|illustration)\s+(of\s+)?/i;
+    // 1. Broad Image Generation Interceptor (Instant high-res images)
+    const imgRegex = /^(?:generate|draw|create|make|paint|render)?\s*(?:an?\s+)?(?:image|photo|picture|graphic|illustration|art)\s+(?:of\s+)?|^(?:draw|paint|sketch)\s+/i;
     if (imgRegex.test(trimmed)) {
       bodyEl.textContent = "🎨 Generating high-definition visual...";
       scrollToBottom(true);
@@ -1889,9 +1926,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const seed = Math.floor(Math.random() * 100000);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanSubject)}?width=1024&height=1024&seed=${seed}&nologo=true`;
 
-      // Render image directly into chat card
       bodyEl.innerHTML = `
-        <div style="margin-bottom:8px; font-weight:600; color:var(--primary);">🎨 Generated Image: "${cleanSubject}"</div>
+        <div style="margin-bottom:8px; font-weight:600; color:var(--primary);">🎨 Generated Visual: "${cleanSubject}"</div>
         <img src="${imageUrl}" style="max-width:100%; border-radius:8px; display:block; margin:8px 0; box-shadow:0 4px 14px rgba(0,0,0,0.4);" />
         <a href="${imageUrl}" target="_blank" style="color:var(--primary); font-size:11px; text-decoration:underline;">Open Full Resolution ↗</a>
       `;
@@ -1901,12 +1937,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    // 2. System Grounding Context
+    // 2. Live Web Grounding for Search / News / Fact Lookups
+    let webContext = "";
+    const isSearchQuery = /^(who|what|when|where|why|how|latest|news|price|score|vs|match|current|today)\b/i.test(trimmed);
+    if (isSearchQuery) {
+      bodyEl.textContent = "🌐 Searching across live web sources...";
+      scrollToBottom(true);
+      webContext = await fetchLiveWebContext(trimmed);
+    }
+
     const systemPrompt = 
-      "You are Bundlex Free AI, a fast, accurate, and helpful assistant in Bundlex AI Studio. " +
-      "The current year is 2026. Provide concise, grounded, and verified answers. " +
-      "Lamine Yamal is a Spanish international winger for FC Barcelona. " +
-      "If the user asks for runnable code, interactive apps, or games, write the full single-file code wrapped in ```html ... ``` blocks.";
+      "You are Bundlex Free AI, an intelligent, verified assistant inside Bundlex AI Studio. " +
+      "Today's year is 2026. Deliver concise, accurate, verified facts. " +
+      "Lamine Yamal is a Spanish international footballer playing as a winger for FC Barcelona. " +
+      (webContext ? "Use the provided [LIVE SEARCH DATA] to answer with real-time grounding and cite URLs when relevant. " : "") +
+      "If the user asks for runnable code, interactive apps, or games, write the full single-file code wrapped inside ```html ... ``` blocks.";
+
+    const promptWithWeb = webContext ? `${prompt}\n${webContext}` : prompt;
 
     bodyEl.textContent = "⚡ Generating response with Bundlex Free AI...";
     scrollToBottom(true);
@@ -1921,7 +1968,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         body: JSON.stringify({
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: prompt }
+            { role: "user", content: promptWithWeb }
           ],
           model: "openai",
           seed: Math.floor(Math.random() * 9999)
@@ -1941,13 +1988,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         saveChat();
         return;
       }
-      console.warn("Primary free tier busy, trying secondary tier...", err);
+      console.warn("Primary free tier busy, routing to fallback...", err);
     }
 
-    // Tier 2: Secondary Resilient URL Endpoint
+    // Tier 2: Resilient Fallback URL Endpoint
     if (!finalResponse) {
       try {
-        const combined = `${systemPrompt}\n\nUser Question: ${prompt}`;
+        const combined = `${systemPrompt}\n\nUser Question: ${promptWithWeb}`;
         const fallbackRes = await fetch(
           `https://text.pollinations.ai/${encodeURIComponent(combined)}?model=mistral&seed=${Math.floor(Math.random() * 9999)}`,
           { signal: signal }
@@ -1965,11 +2012,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           saveChat();
           return;
         }
-        console.error("All free endpoints encountered high traffic:", fallbackErr);
+        console.error("All free endpoints encountered heavy load:", fallbackErr);
       }
     }
 
-    // Render outcome
     if (finalResponse) {
       await streamRenderText(bodyEl, finalResponse, signal);
       playNotificationChime();
