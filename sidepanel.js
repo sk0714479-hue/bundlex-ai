@@ -43,7 +43,6 @@ if (typeof chrome === "undefined" || !chrome.storage) {
 }
 
 // --- MASTER ADMIN SECRET PASSKEY ---
-// Only you know this key. Entering this in the password box grants full Master Admin access.
 const BUNDLEX_MASTER_SECRET = "BUNDLEX-MASTER-2026";
 
 // --- CRYPTOGRAPHIC HASH ENGINE (PBKDF2) ---
@@ -72,7 +71,7 @@ async function hashPasscode(password, salt) {
   return Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// --- STRUCTURED PROMPT LIBRARY WITH CATEGORIES & SPECIFICATIONS ---
+// --- STRUCTURED PROMPT LIBRARY ---
 const BUNDLEX_PROMPTS = [
   { cat: "Coding", spec: "Architecture", title: "Code Review & Security Audit", text: "Audit this code snippet for security vulnerabilities, race conditions, memory leaks, and performance bottlenecks. Provide the refactored version:\n\n" },
   { cat: "Coding", spec: "Syntax", title: "Regex Generator & Explainer", text: "Write a regular expression to match [pattern requirement]. Break down how each token works and include edge-case test strings." },
@@ -1211,6 +1210,51 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // --- ARTIFACTS / CODE RUNNER AUTO-ENHANCER ---
+  function enhanceAssistantCardWithRunner(cardContentEl, fullText) {
+    const codeBlockRegex = /```html\s*([\s\S]*?)```/i;
+    const match = fullText.match(codeBlockRegex);
+
+    if (match && match[1]) {
+      const rawCode = match[1];
+
+      // Prevent duplicate buttons
+      if (cardContentEl.querySelector(".bundlex-run-code-btn")) return;
+
+      const runBtn = document.createElement("button");
+      runBtn.className = "bundlex-run-code-btn";
+      runBtn.innerHTML = "▶️ Run Live App / Game";
+      runBtn.style.cssText = "margin-top:12px; background:#10b981; color:#0f172a; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(16,185,129,0.3);";
+
+      runBtn.onclick = () => {
+        const modal = document.getElementById("canvasModal");
+        const iframe = document.getElementById("canvasFrame");
+        const newTabBtn = document.getElementById("openNewTabBtn");
+
+        if (modal && iframe) {
+          iframe.srcdoc = rawCode;
+          modal.style.display = "flex";
+
+          if (newTabBtn) {
+            newTabBtn.onclick = () => {
+              const blob = new Blob([rawCode], { type: "text/html" });
+              const url = URL.createObjectURL(blob);
+              window.open(url, "_blank");
+            };
+          }
+        } else {
+          // Fallback if modal HTML is not present
+          const blob = new Blob([rawCode], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          window.open(url, "_blank");
+        }
+      };
+
+      cardContentEl.appendChild(document.createElement("br"));
+      cardContentEl.appendChild(runBtn);
+    }
+  }
+
   // Custom Agents
   function updateActiveAgentBanner() {
     if (currentActiveAgent) {
@@ -1420,7 +1464,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (p.id === "simple_calculator") {
         augmented += "\n\n[Tool: Simple Calculator - Perform step-by-step arithmetic verification before stating the result.]";
       } else if (p.id === "web_app_builder") {
-        augmented += "\n\n[Tool: Web App Builder - Provide a complete, single-file HTML/CSS/JavaScript app with clean styling.]";
+        augmented += "\n\n[Tool: Web App Builder - Provide a complete, single-file HTML/CSS/JavaScript app wrapped in ```html ... ``` with clean styling.]";
       } else if (p.id === "render_chart") {
         augmented += "\n\n[Tool: Render Chart - Structure numerical comparisons into clean visual Markdown tables.]";
       } else if (p.id === "deep_research") {
@@ -1815,6 +1859,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function streamRenderText(element, fullText, signal) {
     if (!userSettings.streamResponses) {
       element.textContent = fullText;
+      enhanceAssistantCardWithRunner(element, fullText);
       return;
     }
 
@@ -1828,34 +1873,111 @@ document.addEventListener("DOMContentLoaded", async () => {
         await new Promise(r => setTimeout(r, 12));
       }
     }
+    enhanceAssistantCardWithRunner(element, fullText);
   }
 
-  // --- ZERO-KEY PUBLIC FREE AI INFERENCE ENGINE ---
+  // --- MULTI-TIER RESILIENT FREE AI ENGINE ---
   async function callFreeAI(prompt, bodyEl, signal) {
+    const trimmed = prompt.trim();
+
+    // 1. Instant Image Generation Interceptor
+    const imgRegex = /^(generate|draw|create|make|paint)\s+(an?\s+)?(image|photo|picture|graphic|illustration)\s+(of\s+)?/i;
+    if (imgRegex.test(trimmed)) {
+      bodyEl.textContent = "🎨 Generating high-definition visual...";
+      scrollToBottom(true);
+      const cleanSubject = trimmed.replace(imgRegex, '').trim();
+      const seed = Math.floor(Math.random() * 100000);
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanSubject)}?width=1024&height=1024&seed=${seed}&nologo=true`;
+
+      // Render image directly into chat card
+      bodyEl.innerHTML = `
+        <div style="margin-bottom:8px; font-weight:600; color:var(--primary);">🎨 Generated Image: "${cleanSubject}"</div>
+        <img src="${imageUrl}" style="max-width:100%; border-radius:8px; display:block; margin:8px 0; box-shadow:0 4px 14px rgba(0,0,0,0.4);" />
+        <a href="${imageUrl}" target="_blank" style="color:var(--primary); font-size:11px; text-decoration:underline;">Open Full Resolution ↗</a>
+      `;
+      playNotificationChime();
+      saveChat();
+      scrollToBottom(true);
+      return;
+    }
+
+    // 2. System Grounding Context
+    const systemPrompt = 
+      "You are Bundlex Free AI, a fast, accurate, and helpful assistant in Bundlex AI Studio. " +
+      "The current year is 2026. Provide concise, grounded, and verified answers. " +
+      "Lamine Yamal is a Spanish international winger for FC Barcelona. " +
+      "If the user asks for runnable code, interactive apps, or games, write the full single-file code wrapped in ```html ... ``` blocks.";
+
     bodyEl.textContent = "⚡ Generating response with Bundlex Free AI...";
     scrollToBottom(true);
+
+    let finalResponse = null;
+
+    // Tier 1: Primary Pollinations OpenAI Route
     try {
       const res = await fetch("https://text.pollinations.ai/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }],
-          model: "openai"
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt }
+          ],
+          model: "openai",
+          seed: Math.floor(Math.random() * 9999)
         }),
         signal: signal
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      await streamRenderText(bodyEl, text, signal);
-      playNotificationChime();
-      inspectAndActuateBrowserActions(text);
+
+      if (res.ok) {
+        const text = await res.text();
+        if (text && !text.includes("Free server is busy") && text.trim().length > 0) {
+          finalResponse = text;
+        }
+      }
     } catch (err) {
       if (err.name === "AbortError") {
         bodyEl.textContent = "🛑 Generation stopped.";
-      } else {
-        bodyEl.textContent = "⚠️ Free server is busy right now. Please strike again in a moment.";
+        saveChat();
+        return;
+      }
+      console.warn("Primary free tier busy, trying secondary tier...", err);
+    }
+
+    // Tier 2: Secondary Resilient URL Endpoint
+    if (!finalResponse) {
+      try {
+        const combined = `${systemPrompt}\n\nUser Question: ${prompt}`;
+        const fallbackRes = await fetch(
+          `https://text.pollinations.ai/${encodeURIComponent(combined)}?model=mistral&seed=${Math.floor(Math.random() * 9999)}`,
+          { signal: signal }
+        );
+
+        if (fallbackRes.ok) {
+          const text = await fallbackRes.text();
+          if (text && text.trim().length > 0) {
+            finalResponse = text;
+          }
+        }
+      } catch (fallbackErr) {
+        if (fallbackErr.name === "AbortError") {
+          bodyEl.textContent = "🛑 Generation stopped.";
+          saveChat();
+          return;
+        }
+        console.error("All free endpoints encountered high traffic:", fallbackErr);
       }
     }
+
+    // Render outcome
+    if (finalResponse) {
+      await streamRenderText(bodyEl, finalResponse, signal);
+      playNotificationChime();
+      inspectAndActuateBrowserActions(finalResponse);
+    } else {
+      bodyEl.textContent = "⚠️ Free server network pool is momentarily busy. Please try clicking Strike again in 3 seconds.";
+    }
+
     saveChat();
     scrollToBottom(true);
   }
