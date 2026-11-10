@@ -6,6 +6,7 @@
   <title>Bundlex AI Studio</title>
   <meta name="description" content="Bundlex AI Studio - Personal multi-model AI workspace, agents, knowledge base, and voice dictation.">
   <meta name="google-site-verification" content="eC7Rbyn45zP4j9DKcaisqN9ZtrFIal_GwJWrzedy47o" />
+  <!-- Supabase Client for Inbox Verification & Password Recovery -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -57,7 +58,7 @@
       border-radius: 14px;
       padding: 28px 24px;
       width: 100%;
-      max-width: 400px;
+      max-width: 380px;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
       display: flex;
       flex-direction: column;
@@ -161,14 +162,20 @@
     }
     .auth-input:focus { border-color: var(--primary); }
 
-    .auth-alert {
+    .auth-error {
       font-size: 11px;
+      color: #f87171;
       font-weight: 600;
-      padding: 8px;
-      border-radius: 6px;
-      display: none;
+      min-height: 14px;
       text-align: center;
-      line-height: 1.35;
+    }
+
+    .auth-success {
+      font-size: 11px;
+      color: #34d399;
+      font-weight: 600;
+      min-height: 14px;
+      text-align: center;
     }
 
     .btn-auth-main {
@@ -197,6 +204,18 @@
       transition: all 0.15s;
     }
     .btn-auth-guest:hover { color: #fff; border-color: var(--primary); }
+
+    .auth-switch-text {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .auth-link {
+      color: var(--primary);
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: underline;
+    }
 
     /* Main Workspace Header */
     header {
@@ -787,13 +806,13 @@
 </head>
 <body>
 
-  <!-- AUTHENTICATION & LOGIN MODAL -->
+  <!-- AUTHENTICATION & LOGIN GATEWAY WITH INBOX VERIFICATION & RECOVERY -->
   <div id="authOverlay">
     <div class="auth-card">
       <button class="auth-close" id="btnAuthClose" title="Close">✕</button>
       <div class="auth-badge">📦</div>
       <h2 id="authTitle">Sign In to Bundlex</h2>
-      <p id="authSubtitle">Log in to unlock NVIDIA NIM, Gemini, and custom API model inference.</p>
+      <p id="authSubtitle">Log in to unlock NVIDIA NIM, Google Gemini, and custom API keys.</p>
 
       <div class="auth-tabs">
         <div class="auth-tab active" id="tabSignIn">Sign In</div>
@@ -801,7 +820,13 @@
         <div class="auth-tab" id="tabForgot">Forgot Password</div>
       </div>
       
-      <div id="authAlert" class="auth-alert"></div>
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-success" id="authSuccess"></div>
+
+      <div class="auth-group" id="groupDisplayName" style="display: none;">
+        <label>Display Name</label>
+        <input type="text" id="authDisplayName" class="auth-input" placeholder="e.g. Sunny" />
+      </div>
 
       <div class="auth-group" id="groupEmail">
         <label>Your Email Address</label>
@@ -813,8 +838,13 @@
         <input type="password" id="authPassword" class="auth-input" placeholder="••••••••••••" />
       </div>
 
+      <div class="auth-group" id="groupConfirmPassword" style="display: none;">
+        <label>Confirm Password</label>
+        <input type="password" id="authConfirmPassword" class="auth-input" placeholder="••••••••••••" />
+      </div>
+
       <button id="btnAuthSubmit" class="btn-auth-main">Sign In</button>
-      <button id="btnContinueGuest" class="btn-auth-guest">⚡ Continue with Free Mode (No Login)</button>
+      <button id="btnContinueGuest" class="btn-auth-guest">⚡ Continue with Free Mode (No Login Required)</button>
     </div>
   </div>
 
@@ -826,8 +856,8 @@
     </div>
     <div class="top-actions">
       <button class="btn-new-chat" id="btnNewChat" title="Start fresh conversation">+ New Chat</button>
-      <button class="nav-btn" id="btnNavKeys" style="display:inline-flex; border-color:var(--primary); color:#fff;">🔑 Keys (23+)</button>
-      <button class="nav-btn" id="btnNavAuth">👤 Sign In</button>
+      <button class="nav-btn" id="btnNavKeys" style="display: inline-flex; border-color: var(--primary); color: #fff;">🔑 Keys (24+)</button>
+      <button class="nav-btn" id="btnNavProfile">👤 Sign In</button>
       <button class="nav-btn" id="btnNavSettings">⚙️ Settings</button>
       <button class="nav-btn" id="btnNavKB">🧠 Knowledge Base</button>
       <button class="nav-btn" id="btnNavAgents">🤖 Agents</button>
@@ -843,7 +873,7 @@
     <button id="btnDismissAgent" title="Reset to standard model">✕ Clear Agent</button>
   </div>
 
-  <!-- Drawer 0: Preferences & Settings -->
+  <!-- Drawer 0: Preferences & Settings (Includes Full Keyboard Shortcuts Customization) -->
   <div class="drawer" id="drawerSettings">
     <div class="drawer-header">
       <span class="drawer-title">Preferences & General Settings</span>
@@ -1147,37 +1177,42 @@
     <div class="drawer-scroll-body" id="pluginsContainer"></div>
   </div>
 
-  <!-- Drawer Keys: All 23 Providers + NVIDIA NIM + Advanced Panels (Always Accessible) -->
+  <!-- Drawer Profile -->
+  <div class="drawer" id="drawerProfile">
+    <div class="drawer-header">
+      <span class="drawer-title">User Account & Security</span>
+      <button class="close-btn" data-close="drawerProfile">✕</button>
+    </div>
+    <div class="drawer-scroll-body">
+      <div id="profileSavedView">
+        <div class="prompt-card">
+          <div class="prompt-top">
+            <span class="prompt-title" id="dispName">User</span>
+            <span class="prompt-cat" id="dispRoleBadge" style="background: #10b981; color: #fff;">Authenticated</span>
+          </div>
+          <div class="prompt-desc" id="dispStatus">Encrypted Local Account Active</div>
+        </div>
+        <button class="btn-submit" id="btnOpenAuthModal" style="margin-top: 10px;">🔐 Switch / Register Account</button>
+        <button class="btn-submit" id="btnLockApp" style="margin-top: 6px; background: #0284c7;">🔒 Lock Workspace Now</button>
+        <button class="btn-danger" id="btnLogoutReset">🚪 Log Out / Clear Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer Keys: All Providers Including NVIDIA NIM -->
   <div class="drawer" id="drawerKeys">
     <div class="drawer-header">
-      <span class="drawer-title">API Keys Configuration (Saved Locally in Your Browser)</span>
+      <span class="drawer-title">API Keys Configuration (Bring Your Own Key)</span>
       <button class="close-btn" data-close="drawerKeys">✕</button>
     </div>
-    <input type="text" id="keysSearchInput" class="search-input" placeholder="🔍 Search provider (e.g. NVIDIA, Gemini, OpenAI, Groq)..." />
+    <input type="text" id="keysSearchInput" class="search-input" placeholder="🔍 Search provider (e.g. NVIDIA, OpenAI, Gemini, Groq)..." />
     <div class="drawer-scroll-body" id="keysListContainer">
       
-      <!-- NVIDIA NIM Official Integration -->
-      <div class="field key-item-field" data-name="nvidia nim dgx llama">
-        <label style="color: #34d399;">🟢 NVIDIA NIM (DGX Cloud - Llama 3.3 / Nemotron)</label>
+      <!-- NVIDIA NIM (DGX Cloud) -->
+      <div class="field key-item-field" data-name="nvidia nim dgx llama nemotron" style="border: 1px solid #10b981; padding: 8px; border-radius: 6px; background: #062319;">
+        <label style="color: #34d399;">🟢 NVIDIA NIM (Llama 3.3 / Nemotron)</label>
         <input type="password" id="inputNvidia" placeholder="nvapi-..." />
-        <span style="font-size: 9px; color: #94a3b8;">Get free API key at <a href="https://build.nvidia.com" target="_blank" style="color: var(--primary);">build.nvidia.com</a></span>
-      </div>
-
-      <div class="field key-item-field" data-name="google gemini">
-        <label>Google (Gemini)</label>
-        <input type="password" id="inputGemini" placeholder="AIzaSy..." />
-        <button type="button" class="btn-toggle-adv" data-target="advGoogle">▸ Show advanced options</button>
-        <div class="adv-panel" id="advGoogle">
-          <span class="adv-label">Custom API Base Endpoint</span>
-          <input type="text" id="advGoogleEndpoint" placeholder="https://generativelanguage.googleapis.com" />
-          <span class="adv-label">Preferred Gemini Model</span>
-          <select id="advGoogleModel">
-            <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
-            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
-            <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B</option>
-          </select>
-        </div>
+        <span style="font-size: 9px; color: #94a3b8;">Get free trial key at <a href="https://build.nvidia.com" target="_blank" style="color: #38bdf8;">build.nvidia.com</a></span>
       </div>
 
       <div class="field key-item-field" data-name="openai chatgpt">
@@ -1218,6 +1253,23 @@
         </div>
       </div>
 
+      <div class="field key-item-field" data-name="google gemini">
+        <label>Google (Gemini)</label>
+        <input type="password" id="inputGemini" placeholder="AIzaSy..." />
+        <button type="button" class="btn-toggle-adv" data-target="advGoogle">▸ Show advanced options</button>
+        <div class="adv-panel" id="advGoogle">
+          <span class="adv-label">Custom API Base Endpoint</span>
+          <input type="text" id="advGoogleEndpoint" placeholder="https://generativelanguage.googleapis.com" />
+          <span class="adv-label">Preferred Gemini Model</span>
+          <select id="advGoogleModel">
+            <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+            <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B</option>
+          </select>
+        </div>
+      </div>
+
       <div class="field key-item-field" data-name="openrouter"><label>OpenRouter</label><input type="password" id="inputOpenRouter" placeholder="sk-or-v1-..." /></div>
       <div class="field key-item-field" data-name="spacexai xai grok"><label>SpaceXAI (xAI / Grok)</label><input type="password" id="inputSpaceXAI" placeholder="xai-..." /></div>
       <div class="field key-item-field" data-name="deepseek"><label>Deepseek</label><input type="password" id="inputDeepseek" placeholder="sk-..." /></div>
@@ -1243,8 +1295,8 @@
         </div>
       </div>
       <div class="field key-item-field" data-name="ollama cloud">
-        <label>Ollama Cloud / Local RTX</label>
-        <input type="password" id="inputOllamaCloud" placeholder="API Key / localhost" />
+        <label>Ollama Cloud</label>
+        <input type="password" id="inputOllamaCloud" placeholder="API Key..." />
         <button type="button" class="btn-toggle-adv" data-target="advOllama">▸ Show advanced options</button>
         <div class="adv-panel" id="advOllama">
           <span class="adv-label">Custom Ollama Base URL</span>
@@ -1280,7 +1332,7 @@
     <button class="btn-submit" id="btnSaveKeys" style="margin-top: 8px;">Save All Keys in Browser</button>
   </div>
 
-  <!-- Drawer Prompts (All 200 Structured Prompts) -->
+  <!-- Drawer Prompts -->
   <div class="drawer" id="drawerPrompts">
     <div class="drawer-header">
       <span class="drawer-title">Structured Prompt Library</span>
@@ -1350,13 +1402,13 @@
     <div class="selector-bar">
       <input type="text" id="modelSearch" placeholder="🔍 Search models..." />
       <select id="modelPicker">
-        <option value="bundlex_free" selected>⚡ Bundlex Free AI (No Key & No Login Needed)</option>
-        <option value="nvidia_nim">🟢 NVIDIA NIM (Llama 3.3 70B - Requires Key & Login)</option>
-        <option value="gemini_direct">🔵 Google Gemini (Direct API Key - Requires Login)</option>
-        <option value="openai_direct">🟢 ChatGPT (OpenAI - Requires Login)</option>
-        <option value="claude_direct">🟣 Claude 3.5 Sonnet (Requires Login)</option>
+        <option value="bundlex_free" selected>⚡ Bundlex Free AI (No Key Needed)</option>
+        <option value="nvidia_nim">🟢 NVIDIA NIM (Llama 3.3 70B / Nemotron)</option>
+        <option value="gemini_direct">Google Gemini (Direct)</option>
         <option value="compare_all">⚡ Compare All 3 (Claude + GPT + Gemini)</option>
-        <option value="openrouter/free">🌐 Free Models (via OpenRouter)</option>
+        <option value="openai_direct">ChatGPT (OpenAI Direct)</option>
+        <option value="claude_direct">Claude 3.5 Sonnet (Direct)</option>
+        <option value="openrouter/free">Free Models (via OpenRouter)</option>
       </select>
     </div>
 
@@ -1385,7 +1437,7 @@
     </div>
   </div>
 
-  <!-- Live HTML Canvas / App Runner Modal -->
+  <!-- BUNDLEX ARTIFACTS / LIVE CANVAS VIEWER -->
   <div id="canvasModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; backdrop-filter:blur(6px); flex-direction:column;">
     <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#161b22; border-bottom:1px solid #30363d; color:#e6edf3;">
       <div style="display:flex; align-items:center; gap:10px;">
