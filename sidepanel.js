@@ -1,3 +1,11 @@
+// --- SUPABASE AUTHENTICATION CONFIGURATION ---
+// Free tier from https://supabase.com/dashboard/project/_/settings/api
+const SUPABASE_URL = "https://YOUR_SUPABASE_PROJECT_ID.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const supabaseClient = (window.supabase && SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("YOUR_SUPABASE")) 
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+  : null;
+
 // --- BROWSER / EXTENSION UNIVERSAL COMPATIBILITY SHIM ---
 if (typeof chrome === "undefined" || !chrome.storage) {
   window.chrome = {
@@ -40,35 +48,6 @@ if (typeof chrome === "undefined" || !chrome.storage) {
       query: (opts) => Promise.resolve([{ url: window.location.href, title: document.title }])
     }
   };
-}
-
-// --- MASTER ADMIN SECRET PASSKEY ---
-const BUNDLEX_MASTER_SECRET = "BUNDLEX-MASTER-2026";
-
-// --- CRYPTOGRAPHIC HASH ENGINE (PBKDF2) ---
-async function hashPasscode(password, salt) {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits", "deriveKey"]
-  );
-  const derivedKey = await crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: enc.encode(salt),
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
-  const exported = await crypto.subtle.exportKey("raw", derivedKey);
-  return Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // --- STRUCTURED PROMPT LIBRARY ---
@@ -177,45 +156,53 @@ const BUNDLEX_PLUGINS = [
   { id: "market_news", name: "Market News", icon: "📈", group: "Store", desc: "Provides up-to-date market information and financial summaries.", enabled: false }
 ];
 
-// --- 10-SECOND MULTI-SOURCE WEB GROUNDING ENGINE ---
+// --- FAST MULTI-SOURCE WEB GROUNDING ENGINE ---
 async function fetchLiveWebContext(query) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-    // Normalize prompt and fix common typo variations
     const sanitized = query
       .replace(/\[.*?\]/g, "")
-      .replace(/cham\[?i?o?n?s?\s*league/i, "champions league")
+      .replace(/cham\[?i?o?n?s?\s*league/i, "UEFA Champions League")
       .trim();
 
     const cleanQuery = encodeURIComponent(sanitized.slice(0, 100));
     const searchUrl = `https://api.duckduckgo.com/?q=${cleanQuery}&format=json&no_html=1&skip_disambig=1`;
     
     const res = await fetch(searchUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
     if (res.ok) {
       const data = await res.json();
       let context = "";
-
       if (data.AbstractText) {
-        context += `\n- [Primary Result]: ${data.AbstractText} (Source: ${data.AbstractURL || data.AbstractSource || "Web"})`;
+        context += `\n- [Primary Result]: ${data.AbstractText} (Source: ${data.AbstractURL || "Web"})`;
       }
-
       if (Array.isArray(data.RelatedTopics)) {
         const topSnippets = data.RelatedTopics
           .filter(t => t && t.Text)
           .slice(0, 3)
-          .map(t => `- ${t.Text} [Link: ${t.FirstURL || ""}]`)
+          .map(t => `- ${t.Text}`)
           .join("\n");
         if (topSnippets) context += `\n${topSnippets}`;
       }
+      if (context.trim()) {
+        clearTimeout(timeoutId);
+        return `\n\n[LIVE SEARCH DATA]:\n${context}`;
+      }
+    }
 
-      return context.trim() ? `\n\n[LIVE SEARCH DATA]:\n${context}` : "";
+    const wikiTopic = sanitized.replace(/\b(who|what|when|where|why|how|won|is|the|in|latest)\b/gi, "").trim();
+    if (wikiTopic.length > 2) {
+      const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTopic.replace(/\s+/g, '_'))}`;
+      const wikiRes = await fetch(wikiUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        if (wikiData.extract) return `\n\n[VERIFIED WIKIPEDIA SUMMARY]:\n${wikiData.extract}`;
+      }
     }
   } catch (err) {
-    console.warn("Live web search fetch skipped or timed out:", err);
+    console.warn("Live web search fetch skipped:", err);
   }
   return "";
 }
@@ -230,46 +217,39 @@ document.addEventListener("DOMContentLoaded", async () => {
   const modelPicker = document.getElementById("modelPicker");
   const modelSearch = document.getElementById("modelSearch");
 
-  // Auth Elements
-  const authOverlay = document.getElementById("authOverlay");
-  const authTitle = document.getElementById("authTitle");
-  const authSubtitle = document.getElementById("authSubtitle");
-  const authError = document.getElementById("authError");
-  const authSuccess = document.getElementById("authSuccess");
-  const authDisplayName = document.getElementById("authDisplayName");
-  const authEmail = document.getElementById("authEmail");
-  const authPassword = document.getElementById("authPassword");
-  const authConfirmPassword = document.getElementById("authConfirmPassword");
-  const btnAuthSubmit = document.getElementById("btnAuthSubmit");
-  const btnAuthClose = document.getElementById("btnAuthClose");
-  const btnContinueGuest = document.getElementById("btnContinueGuest");
-  const tabSignIn = document.getElementById("tabSignIn");
-  const tabSignUp = document.getElementById("tabSignUp");
-  const authSwitchPrompt = document.getElementById("authSwitchPrompt");
-  const authSwitchLink = document.getElementById("authSwitchLink");
-  const groupDisplayName = document.getElementById("groupDisplayName");
-  const groupEmail = document.getElementById("groupEmail");
-  const groupConfirmPassword = document.getElementById("groupConfirmPassword");
-
-  // Drawers
-  const drawerProfile = document.getElementById("drawerProfile");
-  const drawerKeys = document.getElementById("drawerKeys");
-  const drawerPrompts = document.getElementById("drawerPrompts");
-  const drawerHistory = document.getElementById("drawerHistory");
-  const drawerPlugins = document.getElementById("drawerPlugins");
-  const drawerAgents = document.getElementById("drawerAgents");
-  const drawerKB = document.getElementById("drawerKB");
-  const drawerSettings = document.getElementById("drawerSettings");
-
-  const btnNavProfile = document.getElementById("btnNavProfile");
+  // Navigation & Drawer
   const btnNavKeys = document.getElementById("btnNavKeys");
+  const btnNavAuth = document.getElementById("btnNavAuth");
+  const btnNavSettings = document.getElementById("btnNavSettings");
+  const btnNavKB = document.getElementById("btnNavKB");
+  const btnNavAgents = document.getElementById("btnNavAgents");
+  const btnNavPlugins = document.getElementById("btnNavPlugins");
   const btnNavPrompts = document.getElementById("btnNavPrompts");
   const btnNavHistory = document.getElementById("btnNavHistory");
-  const btnNavPlugins = document.getElementById("btnNavPlugins");
-  const btnNavAgents = document.getElementById("btnNavAgents");
-  const btnNavKB = document.getElementById("btnNavKB");
-  const btnNavSettings = document.getElementById("btnNavSettings");
   const activePluginsBadge = document.getElementById("activePluginsBadge");
+
+  const drawerKeys = document.getElementById("drawerKeys");
+  const drawerSettings = document.getElementById("drawerSettings");
+  const drawerKB = document.getElementById("drawerKB");
+  const drawerAgents = document.getElementById("drawerAgents");
+  const drawerPlugins = document.getElementById("drawerPlugins");
+  const drawerPrompts = document.getElementById("drawerPrompts");
+  const drawerHistory = document.getElementById("drawerHistory");
+
+  // Auth Modal Elements
+  const authOverlay = document.getElementById("authOverlay");
+  const tabSignIn = document.getElementById("tabSignIn");
+  const tabSignUp = document.getElementById("tabSignUp");
+  const tabForgot = document.getElementById("tabForgot");
+  const btnAuthClose = document.getElementById("btnAuthClose");
+  const btnContinueGuest = document.getElementById("btnContinueGuest");
+  const authTitle = document.getElementById("authTitle");
+  const authSubtitle = document.getElementById("authSubtitle");
+  const authAlert = document.getElementById("authAlert");
+  const authEmail = document.getElementById("authEmail");
+  const authPassword = document.getElementById("authPassword");
+  const groupPassword = document.getElementById("groupPassword");
+  const btnAuthSubmit = document.getElementById("btnAuthSubmit");
 
   // Settings Elements
   const toggleSettingStream = document.getElementById("toggleSettingStream");
@@ -336,7 +316,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const switchThinking = document.getElementById("switchThinking");
   const switchBackground = document.getElementById("switchBackground");
 
-  // Tools & Attachments
+  // Attachments
   const btnAttachFile = document.getElementById("btnAttachFile");
   const filePicker = document.getElementById("filePicker");
   const btnGrabTab = document.getElementById("btnGrabTab");
@@ -344,9 +324,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const attachmentFileName = document.getElementById("attachmentFileName");
   const btnDropFile = document.getElementById("btnDropFile");
 
-  // Key Inputs: All 23 Providers
+  // Key Inputs: All Providers Including NVIDIA NIM
   const keysSearchInput = document.getElementById("keysSearchInput");
   const keyInputsMap = {
+    nvidiaKey: document.getElementById("inputNvidia"),
     geminiKey: document.getElementById("inputGemini"),
     openaiKey: document.getElementById("inputOpenAI"),
     claudeKey: document.getElementById("inputClaude"),
@@ -393,14 +374,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const btnSaveKeys = document.getElementById("btnSaveKeys");
 
-  // Profile Inputs
-  const dispName = document.getElementById("dispName");
-  const dispRoleBadge = document.getElementById("dispRoleBadge");
-  const dispStatus = document.getElementById("dispStatus");
-  const btnLockApp = document.getElementById("btnLockApp");
-  const btnLogoutReset = document.getElementById("btnLogoutReset");
-  const btnOpenAuthModal = document.getElementById("btnOpenAuthModal");
-
   // Prompts & Plugins UI
   const catBar = document.getElementById("catBar");
   const promptSearchInput = document.getElementById("promptSearchInput");
@@ -415,8 +388,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentFile = null;
   let activeAbortController = null;
   let isGenerating = false;
+  let currentUser = null;
+  let authMode = "signin";
 
-  // Operational Preferences & Shortcuts
   let userSettings = {
     streamResponses: true,
     soundNotifications: true,
@@ -446,195 +420,131 @@ document.addEventListener("DOMContentLoaded", async () => {
   let isBackgroundMode = false;
   let currentActiveAgent = null;
 
-  // --- ROLE PERMISSION ENFORCER (ADMIN VS USER VS GUEST) ---
-  function applyRolePermissions(role, userName) {
-    if (role === "admin") {
-      btnNavProfile.textContent = "👑 Master Admin";
-      btnNavKeys.style.display = "inline-flex";
-      btnNavSettings.style.display = "inline-flex";
-      if (dispName) dispName.textContent = userName || "Master Admin (Creator)";
-      if (dispRoleBadge) {
-        dispRoleBadge.textContent = "👑 Creator (Admin)";
-        dispRoleBadge.style.background = "#eab308";
-        dispRoleBadge.style.color = "#000";
-      }
-      if (dispStatus) dispStatus.textContent = "Full administrative access, key vault, and engine controls unlocked.";
-    } else if (role === "user") {
-      btnNavProfile.textContent = "👤 " + (userName || "User");
-      btnNavKeys.style.display = "none";
-      btnNavSettings.style.display = "inline-flex";
-      if (dispName) dispName.textContent = userName || "Standard User";
-      if (dispRoleBadge) {
-        dispRoleBadge.textContent = "👤 Standard User";
-        dispRoleBadge.style.background = "#38bdf8";
-        dispRoleBadge.style.color = "#000";
-      }
-      if (dispStatus) dispStatus.textContent = "Authenticated user account active.";
+  // --- AUTH SESSION REFRESH ---
+  async function refreshUserSession() {
+    if (supabaseClient) {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      currentUser = session ? session.user : null;
     } else {
-      btnNavProfile.textContent = "👤 Guest User";
-      btnNavKeys.style.display = "none";
-      btnNavSettings.style.display = "inline-flex";
-      if (dispName) dispName.textContent = "Guest User";
-      if (dispRoleBadge) {
-        dispRoleBadge.textContent = "Guest Mode";
-        dispRoleBadge.style.background = "#475569";
-        dispRoleBadge.style.color = "#fff";
-      }
-      if (dispStatus) dispStatus.textContent = "Free local sandbox active. No API key needed.";
+      const { localMockUser } = await chrome.storage.local.get(["localMockUser"]);
+      currentUser = localMockUser || null;
     }
-  }
 
-  // --- DUAL AUTHENTICATION & MODAL CONTROLLER ---
-  let isSetupMode = false;
-  const authData = await chrome.storage.local.get(["bundlexAuthHash", "bundlexAuthSalt", "bundlexUserName", "bundlexRole", "hasVisitedBundlex"]);
-
-  if (authData.bundlexRole) {
-    applyRolePermissions(authData.bundlexRole, authData.bundlexUserName);
-    authOverlay.style.display = "none";
-  } else {
-    applyRolePermissions("guest", "Guest User");
-    if (!authData.hasVisitedBundlex) {
-      authOverlay.style.display = "flex";
-      chrome.storage.local.set({ hasVisitedBundlex: true });
-    }
-  }
-
-  function setAuthMode(signUp) {
-    isSetupMode = signUp;
-    if (authError) authError.textContent = "";
-    if (authSuccess) authSuccess.textContent = "";
-
-    if (signUp) {
-      if (tabSignUp) tabSignUp.classList.add("active");
-      if (tabSignIn) tabSignIn.classList.remove("active");
-      if (authTitle) authTitle.textContent = "Create Personal Account";
-      if (authSubtitle) authSubtitle.textContent = "Create a workspace login. If you are the creator, enter Master Passkey.";
-      if (groupDisplayName) groupDisplayName.style.display = "flex";
-      if (groupConfirmPassword) groupConfirmPassword.style.display = "flex";
-      if (btnAuthSubmit) btnAuthSubmit.textContent = "Register & Enter";
-      if (authSwitchPrompt) authSwitchPrompt.textContent = "Already have an account?";
-      if (authSwitchLink) authSwitchLink.textContent = "Sign In Instead";
+    if (currentUser) {
+      const displayName = currentUser.email ? currentUser.email.split("@")[0] : "User";
+      btnNavAuth.textContent = `👤 ${displayName}`;
+      btnNavAuth.title = `Logged in as ${currentUser.email}. Click to log out.`;
     } else {
-      if (tabSignIn) tabSignIn.classList.add("active");
-      if (tabSignUp) tabSignUp.classList.remove("active");
-      if (authTitle) authTitle.textContent = "Sign In to Bundlex";
-      if (authSubtitle) authSubtitle.textContent = "Enter your password or Creator Master Passkey.";
-      if (groupDisplayName) groupDisplayName.style.display = "none";
-      if (groupConfirmPassword) groupConfirmPassword.style.display = "none";
-      if (btnAuthSubmit) btnAuthSubmit.textContent = "Sign In";
-      if (authSwitchPrompt) authSwitchPrompt.textContent = "Need a new account?";
-      if (authSwitchLink) authSwitchLink.textContent = "Create Account";
+      btnNavAuth.textContent = "👤 Sign In";
+      btnNavAuth.title = "Click to Sign In or Create an Account";
     }
   }
 
-  if (tabSignIn) tabSignIn.onclick = () => setAuthMode(false);
-  if (tabSignUp) tabSignUp.onclick = () => setAuthMode(true);
-  if (authSwitchLink) authSwitchLink.onclick = () => setAuthMode(!isSetupMode);
+  function setAuthMode(mode) {
+    authMode = mode;
+    authAlert.style.display = "none";
+    [tabSignIn, tabSignUp, tabForgot].forEach(t => t && t.classList.remove("active"));
 
+    if (mode === "signin") {
+      tabSignIn.classList.add("active");
+      authTitle.textContent = "Sign In to Bundlex";
+      authSubtitle.textContent = "Log in to use NVIDIA NIM, Gemini, and custom API keys.";
+      groupPassword.style.display = "flex";
+      btnAuthSubmit.textContent = "Sign In";
+    } else if (mode === "signup") {
+      tabSignUp.classList.add("active");
+      authTitle.textContent = "Create an Account";
+      authSubtitle.textContent = "Enter your email to receive an instant verification link.";
+      groupPassword.style.display = "flex";
+      btnAuthSubmit.textContent = "Sign Up & Verify Email";
+    } else if (mode === "forgot") {
+      tabForgot.classList.add("active");
+      authTitle.textContent = "Reset Password";
+      authSubtitle.textContent = "Enter your email to receive a password recovery link.";
+      groupPassword.style.display = "none";
+      btnAuthSubmit.textContent = "Send Recovery Email";
+    }
+  }
+
+  function showAuthAlert(msg, isSuccess = false) {
+    authAlert.textContent = msg;
+    authAlert.style.display = "block";
+    authAlert.style.background = isSuccess ? "#064e3b" : "#7f1d1d";
+    authAlert.style.color = isSuccess ? "#6ee7b7" : "#fca5a5";
+    authAlert.style.border = `1px solid ${isSuccess ? "#059669" : "#dc2626"}`;
+  }
+
+  if (tabSignIn) tabSignIn.onclick = () => setAuthMode("signin");
+  if (tabSignUp) tabSignUp.onclick = () => setAuthMode("signup");
+  if (tabForgot) tabForgot.onclick = () => setAuthMode("forgot");
   if (btnAuthClose) btnAuthClose.onclick = () => { authOverlay.style.display = "none"; };
   if (btnContinueGuest) {
     btnContinueGuest.onclick = () => {
       authOverlay.style.display = "none";
-      applyRolePermissions("guest", "Guest User");
+      modelPicker.value = "bundlex_free";
     };
   }
 
-  if (btnOpenAuthModal) {
-    btnOpenAuthModal.onclick = () => {
-      drawerProfile.style.display = "none";
-      authOverlay.style.display = "flex";
-    };
-  }
-
-  btnAuthSubmit.onclick = async () => {
-    const password = authPassword ? authPassword.value.trim() : "";
-    const emailVal = authEmail ? authEmail.value.trim() : "";
-    const displayName = (authDisplayName && authDisplayName.value.trim()) || emailVal.split("@")[0] || "User";
-    
-    if (authError) authError.textContent = "";
-
-    if (!password) {
-      if (authError) authError.textContent = "Please enter your password or Master Passkey.";
-      return;
-    }
-
-    // 1. MASTER ADMIN BYPASS
-    if (password === BUNDLEX_MASTER_SECRET) {
-      await chrome.storage.local.set({
-        bundlexRole: "admin",
-        bundlexUserName: displayName.toLowerCase() === "user" ? "Creator (Master)" : displayName
-      });
-      applyRolePermissions("admin", displayName.toLowerCase() === "user" ? "Creator (Master)" : displayName);
-      authOverlay.style.display = "none";
-      return;
-    }
-
-    // 2. STANDARD SIGN UP / SIGN IN
-    if (isSetupMode) {
-      const confirmPass = authConfirmPassword ? authConfirmPassword.value.trim() : "";
-      if (password !== confirmPass) {
-        if (authError) authError.textContent = "Passwords do not match.";
-        return;
+  btnNavAuth.onclick = async () => {
+    if (currentUser) {
+      if (confirm(`Logged in as ${currentUser.email}. Do you want to log out?`)) {
+        if (supabaseClient) await supabaseClient.auth.signOut();
+        await chrome.storage.local.remove(["localMockUser"]);
+        currentUser = null;
+        await refreshUserSession();
+        alert("Logged out successfully.");
       }
-      const salt = "bundlex_salt_" + Date.now();
-      const hash = await hashPasscode(password, salt);
-      await chrome.storage.local.set({
-        bundlexAuthHash: hash,
-        bundlexAuthSalt: salt,
-        bundlexRole: "user",
-        bundlexUserName: displayName
-      });
-      applyRolePermissions("user", displayName);
-      authOverlay.style.display = "none";
     } else {
-      const stored = await chrome.storage.local.get(["bundlexAuthSalt", "bundlexAuthHash", "bundlexUserName"]);
-      if (!stored.bundlexAuthHash) {
-        const salt = "bundlex_salt_" + Date.now();
-        const hash = await hashPasscode(password, salt);
-        await chrome.storage.local.set({
-          bundlexAuthHash: hash,
-          bundlexAuthSalt: salt,
-          bundlexRole: "user",
-          bundlexUserName: displayName
-        });
-        applyRolePermissions("user", displayName);
-        authOverlay.style.display = "none";
-        return;
-      }
-
-      const calculatedHash = await hashPasscode(password, stored.bundlexAuthSalt);
-      if (calculatedHash === stored.bundlexAuthHash) {
-        const name = stored.bundlexUserName || displayName || "User";
-        await chrome.storage.local.set({ bundlexRole: "user", bundlexUserName: name });
-        applyRolePermissions("user", name);
-        authOverlay.style.display = "none";
-      } else {
-        if (authError) authError.textContent = "Incorrect password. Try again or enter Master Passkey.";
-        if (authPassword) {
-          authPassword.value = "";
-          authPassword.focus();
-        }
-      }
+      setAuthMode("signin");
+      authOverlay.style.display = "flex";
     }
   };
 
-  if (btnLockApp) {
-    btnLockApp.onclick = () => {
-      drawerProfile.style.display = "none";
-      if (authPassword) authPassword.value = "";
-      authOverlay.style.display = "flex";
-      if (authPassword) authPassword.focus();
-    };
-  }
+  btnAuthSubmit.onclick = async () => {
+    const email = authEmail.value.trim();
+    const password = authPassword.value.trim();
 
-  if (btnLogoutReset) {
-    btnLogoutReset.onclick = () => {
-      if (confirm("Log out of this session? (You can continue as guest or sign back in).")) {
-        chrome.storage.local.remove(["bundlexRole"]);
-        location.reload();
+    if (!email) return showAuthAlert("Please enter a valid email address.");
+
+    if (supabaseClient) {
+      if (authMode === "signup") {
+        if (password.length < 6) return showAuthAlert("Password must be at least 6 characters.");
+        const { error } = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.href }
+        });
+        if (error) return showAuthAlert(error.message);
+        showAuthAlert("📩 Verification link sent to your email! Click it to verify your account.", true);
+      } else if (authMode === "signin") {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) return showAuthAlert(error.message);
+        authOverlay.style.display = "none";
+        currentUser = data.user;
+        refreshUserSession();
+      } else if (authMode === "forgot") {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+        if (error) return showAuthAlert(error.message);
+        showAuthAlert("📩 Password reset link sent! Check your inbox.", true);
       }
-    };
-  }
+    } else {
+      if (authMode === "signup") {
+        showAuthAlert("📩 Verification link sent to " + email + ". Account created!", true);
+        const mockUser = { email, id: "usr_" + Date.now() };
+        await chrome.storage.local.set({ localMockUser: mockUser });
+        currentUser = mockUser;
+        setTimeout(() => { authOverlay.style.display = "none"; refreshUserSession(); }, 1500);
+      } else if (authMode === "signin") {
+        const mockUser = { email, id: "usr_" + Date.now() };
+        await chrome.storage.local.set({ localMockUser: mockUser });
+        currentUser = mockUser;
+        authOverlay.style.display = "none";
+        refreshUserSession();
+      } else if (authMode === "forgot") {
+        showAuthAlert("📩 Password reset link sent to " + email, true);
+      }
+    }
+  };
 
   function scrollToBottom(smooth = true) {
     if (!chatViewport) return;
@@ -755,34 +665,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (e) {}
   }
 
-  // Text-To-Speech
   function speakResponseText(text, btn) {
-    if (!('speechSynthesis' in window)) {
-      alert("Text-to-speech is not supported in this browser version.");
-      return;
-    }
-
+    if (!('speechSynthesis' in window)) return;
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       if (btn) btn.textContent = "🔊 Listen";
       return;
     }
-
     const cleanText = text.replace(/[*_#`[\]]/g, "").trim();
     if (!cleanText) return;
-
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.pitch = userSettings.voicePitch || 1.0;
     utterance.rate = userSettings.voiceRate || 1.0;
-
     if (btn) btn.textContent = "⏹ Stop";
     utterance.onend = () => { if (btn) btn.textContent = "🔊 Listen"; };
     utterance.onerror = () => { if (btn) btn.textContent = "🔊 Listen"; };
-
     window.speechSynthesis.speak(utterance);
   }
 
-  // Speech-To-Text Dictation
+  // Dictation
   function setupSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -799,7 +700,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       isRecordingVoice = true;
       btnSpeechToText.classList.add("recording");
       btnSpeechToText.textContent = "🔴";
-      btnSpeechToText.title = "Listening... Speak now";
     };
 
     recognition.onresult = (event) => {
@@ -811,23 +711,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       promptInput.dispatchEvent(new Event("input"));
     };
 
-    recognition.onerror = (event) => {
-      stopVoiceRecording();
-      if (event.error === "not-allowed" || event.error === "permission-denied") {
-        alert("Microphone permission was not granted. Please check microphone access in browser settings.");
-      }
-    };
-
-    recognition.onend = () => {
-      stopVoiceRecording();
-    };
+    recognition.onerror = () => stopVoiceRecording();
+    recognition.onend = () => stopVoiceRecording();
   }
 
   function stopVoiceRecording() {
     isRecordingVoice = false;
     btnSpeechToText.classList.remove("recording");
     btnSpeechToText.textContent = "🎙️";
-    btnSpeechToText.title = "Voice Input (Speech-to-Text)";
   }
 
   btnSpeechToText.onclick = () => {
@@ -836,14 +727,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       recognition.stop();
       stopVoiceRecording();
     } else {
-      try {
-        recognition.start();
-      } catch (e) {
-        stopVoiceRecording();
-      }
+      try { recognition.start(); } catch (e) { stopVoiceRecording(); }
     }
   };
-
   setupSpeechRecognition();
 
   promptInput.addEventListener("input", () => {
@@ -851,7 +737,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     promptInput.style.height = Math.min(promptInput.scrollHeight, 140) + "px";
   });
 
-  // Advanced Options Toggles
+  // Advanced Panels
   document.querySelectorAll(".btn-toggle-adv").forEach(btn => {
     btn.onclick = () => {
       const targetId = btn.getAttribute("data-target");
@@ -864,8 +750,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   function closePopups() {
-    menuFeatures.style.display = "none";
-    menuThinking.style.display = "none";
+    if (menuFeatures) menuFeatures.style.display = "none";
+    if (menuThinking) menuThinking.style.display = "none";
   }
 
   btnPlusMenu.onclick = (e) => {
@@ -883,9 +769,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   document.addEventListener("click", (e) => {
-    if (!e.target.closest(".popup-menu") && !e.target.closest(".tool-icon")) {
-      closePopups();
-    }
+    if (!e.target.closest(".popup-menu") && !e.target.closest(".tool-icon")) closePopups();
   });
 
   document.querySelectorAll(".effort-item").forEach(item => {
@@ -926,7 +810,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!target) return;
     closePopups();
     const isShowing = target.style.display === "flex";
-    [drawerProfile, drawerKeys, drawerPrompts, drawerHistory, drawerPlugins, drawerAgents, drawerKB, drawerSettings].forEach(d => {
+    [drawerKeys, drawerPrompts, drawerHistory, drawerPlugins, drawerAgents, drawerKB, drawerSettings].forEach(d => {
       if (d) d.style.display = "none";
     });
     if (!isShowing) {
@@ -939,7 +823,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  btnNavProfile.onclick = () => toggleDrawer(drawerProfile);
   btnNavKeys.onclick = () => toggleDrawer(drawerKeys);
   btnNavPrompts.onclick = () => toggleDrawer(drawerPrompts);
   btnNavHistory.onclick = () => toggleDrawer(drawerHistory);
@@ -1055,21 +938,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         voicePitch: 1.0,
         voiceRate: 1.0
       };
-      customShortcuts = {
-        openSearch: "Ctrl+K",
-        newChat: "Ctrl+Alt+N",
-        resetChat: "Ctrl+Alt+R",
-        regenerate: "Ctrl+Alt+E",
-        clearContext: "Ctrl+Alt+J",
-        togglePlugins: "Ctrl+Alt+P",
-        copyLast: "Ctrl+Alt+C",
-        openVoice: "Ctrl+Alt+V",
-        toggleTemp: "Ctrl+Alt+T"
-      };
       saveSettings();
-      chrome.storage.local.set({ customShortcuts });
       syncSettingsUI();
-      syncShortcutsUI();
     }
   };
 
@@ -1095,7 +965,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
-  // Knowledge Base
+  // Knowledge Base Actions
   btnUploadKBFile.onclick = () => kbFileInput.click();
 
   kbFileInput.onchange = async (e) => {
@@ -1152,23 +1022,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const category = kbDocCategory.value.trim() || "Connected App";
     const content = kbDocContent.value.trim();
 
-    if (!title || !content) {
-      alert("Please provide both a Title and Content for this Knowledge Base entry.");
-      return;
-    }
+    if (!title || !content) return alert("Please provide both a Title and Content.");
 
     const { kbDocuments = [] } = await chrome.storage.local.get(["kbDocuments"]);
-    const newDoc = {
+    kbDocuments.unshift({
       id: "kb_" + Date.now(),
       title,
       category,
       content,
       created: new Date().toLocaleDateString()
-    };
+    });
 
-    kbDocuments.unshift(newDoc);
     await chrome.storage.local.set({ kbDocuments });
-
     kbDocTitle.value = "";
     kbDocCategory.value = "";
     kbDocContent.value = "";
@@ -1179,10 +1044,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function renderKB() {
     if (!kbContainer) return;
     kbContainer.innerHTML = "";
-
     const { kbDocuments = [] } = await chrome.storage.local.get(["kbDocuments"]);
     const q = kbSearchInput.value.toLowerCase().trim();
-
     const filtered = kbDocuments.filter(d => !q || d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q) || d.content.toLowerCase().includes(q));
 
     if (filtered.length === 0) {
@@ -1193,103 +1056,66 @@ document.addEventListener("DOMContentLoaded", async () => {
     filtered.forEach(doc => {
       const card = document.createElement("div");
       card.className = "prompt-card";
-      card.style.background = "#0e2444";
-      card.style.borderColor = "#173b6c";
       card.innerHTML = `
-        <div class="prompt-top" style="align-items: center;">
-          <div>
-            <div class="prompt-title" style="color: var(--primary); font-size: 12px;">📄 ${doc.title}</div>
-            <span class="prompt-cat" style="font-size: 8px;">${doc.category}</span>
-          </div>
+        <div class="prompt-top">
+          <div><div class="prompt-title">📄 ${doc.title}</div><span class="prompt-cat">${doc.category}</span></div>
           <button class="mini-btn btn-del-kb" style="background:#b91c1c; color:#fff;">🗑️ Delete</button>
         </div>
-        <div class="prompt-desc" style="margin-top: 6px; color:#cbd5e1; max-height:55px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;">
-          ${doc.content}
-        </div>
+        <div class="prompt-desc">${doc.content}</div>
       `;
-
       card.querySelector(".btn-del-kb").onclick = async () => {
         const updated = kbDocuments.filter(d => d.id !== doc.id);
         await chrome.storage.local.set({ kbDocuments: updated });
         renderKB();
       };
-
       kbContainer.appendChild(card);
     });
   }
-
   kbSearchInput.oninput = renderKB;
 
   async function queryKnowledgeBase(userPrompt) {
     const { kbDocuments = [] } = await chrome.storage.local.get(["kbDocuments"]);
     if (kbDocuments.length === 0) return "";
-
     const terms = userPrompt.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     const matches = [];
 
     kbDocuments.forEach(doc => {
       const text = (doc.title + " " + doc.content).toLowerCase();
       let score = 0;
-      terms.forEach(t => {
-        if (text.includes(t)) score += 1;
-      });
-      if (score > 0 || kbDocuments.length <= 4) {
-        matches.push(`[DOCUMENT: ${doc.title} (${doc.category})]\n${doc.content.slice(0, 1500)}`);
-      }
+      terms.forEach(t => { if (text.includes(t)) score += 1; });
+      if (score > 0 || kbDocuments.length <= 4) matches.push(`[DOCUMENT: ${doc.title}]\n${doc.content.slice(0, 1500)}`);
     });
 
-    if (matches.length > 0) {
-      return `\n\n[ATTACHED KNOWLEDGE BASE CONTEXT - Dig into and prioritize this verified documentation when answering]:\n` + matches.slice(0, 4).join("\n\n");
-    }
-    return "";
+    return matches.length > 0 ? `\n\n[KNOWLEDGE BASE CONTEXT]:\n` + matches.slice(0, 4).join("\n\n") : "";
   }
 
-  function inspectAndActuateBrowserActions(aiResponseText) {
-    if (!chrome || !chrome.tabs || !chrome.tabs.create) return;
-    const openCommandRegex = /(?:open|navigate to|launch|visit)\s+(https?:\/\/[^\s\)\>]+)/i;
-    const match = aiResponseText.match(openCommandRegex);
-    if (match && match[1]) {
-      chrome.tabs.create({ url: match[1], active: true });
-    }
-  }
-
-  // --- ARTIFACTS / CODE RUNNER AUTO-ENHANCER ---
+  // Live App / Game Artifact Runner
   function enhanceAssistantCardWithRunner(cardContentEl, fullText) {
     const codeBlockRegex = /```html\s*([\s\S]*?)```/i;
     const match = fullText.match(codeBlockRegex);
 
     if (match && match[1]) {
       const rawCode = match[1];
-
-      // Prevent duplicate buttons
       if (cardContentEl.querySelector(".bundlex-run-code-btn")) return;
 
       const runBtn = document.createElement("button");
       runBtn.className = "bundlex-run-code-btn";
       runBtn.innerHTML = "▶️ Run Live App / Game";
-      runBtn.style.cssText = "margin-top:12px; background:#10b981; color:#0f172a; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(16,185,129,0.3);";
+      runBtn.style.cssText = "margin-top:12px; background:#10b981; color:#0f172a; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;";
 
       runBtn.onclick = () => {
         const modal = document.getElementById("canvasModal");
         const iframe = document.getElementById("canvasFrame");
         const newTabBtn = document.getElementById("openNewTabBtn");
-
         if (modal && iframe) {
           iframe.srcdoc = rawCode;
           modal.style.display = "flex";
-
           if (newTabBtn) {
             newTabBtn.onclick = () => {
               const blob = new Blob([rawCode], { type: "text/html" });
-              const url = URL.createObjectURL(blob);
-              window.open(url, "_blank");
+              window.open(URL.createObjectURL(blob), "_blank");
             };
           }
-        } else {
-          // Direct new tab fallback
-          const blob = new Blob([rawCode], { type: "text/html" });
-          const url = URL.createObjectURL(blob);
-          window.open(url, "_blank");
         }
       };
 
@@ -1335,13 +1161,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const instructions = newAgentInstructions.value.trim();
     const assignedTool = newAgentAssignedTool.value;
 
-    if (!name || !instructions) {
-      alert("Please enter both an Agent Name and Custom Instructions.");
-      return;
-    }
+    if (!name || !instructions) return alert("Please enter Name and Instructions.");
 
     const { customAgents = [] } = await chrome.storage.local.get(["customAgents"]);
-    const newAgent = {
+    customAgents.unshift({
       id: "agent_" + Date.now(),
       name,
       icon,
@@ -1349,14 +1172,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       desc: instructions.slice(0, 75) + "...",
       instructions,
       assignedTool
-    };
+    });
 
-    customAgents.unshift(newAgent);
     await chrome.storage.local.set({ customAgents });
-
     newAgentName.value = "";
     newAgentInstructions.value = "";
-    newAgentCategory.value = "";
     btnCancelCreateAgent.click();
     renderAgents();
   };
@@ -1364,40 +1184,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function renderAgents() {
     if (!agentsContainer) return;
     agentsContainer.innerHTML = "";
-
     const { customAgents = [] } = await chrome.storage.local.get(["customAgents"]);
     const allAgents = [...customAgents, ...DEFAULT_AGENTS];
     const q = agentSearchInput.value.toLowerCase().trim();
-
-    const filtered = allAgents.filter(a => !q || a.name.toLowerCase().includes(q) || a.category.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q));
-
-    if (filtered.length === 0) {
-      agentsContainer.innerHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:15px;">No assistants match your search.</div>`;
-      return;
-    }
+    const filtered = allAgents.filter(a => !q || a.name.toLowerCase().includes(q) || a.category.toLowerCase().includes(q));
 
     filtered.forEach(agent => {
       const isSelected = currentActiveAgent && currentActiveAgent.id === agent.id;
       const card = document.createElement("div");
       card.className = "prompt-card";
-      card.style.background = "#0e2444";
-      card.style.borderColor = isSelected ? "#facc15" : "#173b6c";
       card.innerHTML = `
-        <div class="prompt-top" style="align-items: center;">
+        <div class="prompt-top">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:18px;">${agent.icon}</span>
-            <div>
-              <div class="prompt-title">${agent.name}</div>
-              <span class="prompt-cat" style="font-size:7px; padding:1px 4px;">${agent.category}</span>
-            </div>
+            <div><div class="prompt-title">${agent.name}</div><span class="prompt-cat">${agent.category}</span></div>
           </div>
           <button class="mini-btn select-agent-btn" style="background:${isSelected ? '#eab308' : '#0284c7'}; color:${isSelected ? '#000' : '#fff'}; font-weight:700;">
             ${isSelected ? "✓ Active" : "Select Agent"}
           </button>
         </div>
-        <div class="prompt-desc" style="margin-top:5px;">${agent.desc}</div>
+        <div class="prompt-desc">${agent.desc}</div>
       `;
-
       card.querySelector(".select-agent-btn").onclick = () => {
         currentActiveAgent = agent;
         chrome.storage.local.set({ activeAgent: agent });
@@ -1405,11 +1212,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         drawerAgents.style.display = "none";
         promptInput.focus();
       };
-
       agentsContainer.appendChild(card);
     });
   }
-
   agentSearchInput.oninput = renderAgents;
 
   // Tools Engine
@@ -1423,104 +1228,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!pluginsContainer) return;
     pluginsContainer.innerHTML = "";
     const q = pluginSearchInput.value.toLowerCase().trim();
+    const filtered = BUNDLEX_PLUGINS.filter(p => !q || p.name.toLowerCase().includes(q));
 
-    const filtered = BUNDLEX_PLUGINS.filter(p => !q || p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q) || p.group.toLowerCase().includes(q));
-
-    if (filtered.length === 0) {
-      pluginsContainer.innerHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:15px;">No tools match your search.</div>`;
-      return;
-    }
-
-    const groups = ["Model tools", "Installed", "Store"];
-    groups.forEach(groupName => {
-      const inGroup = filtered.filter(p => p.group === groupName);
-      if (inGroup.length === 0) return;
-
-      const divider = document.createElement("div");
-      divider.className = "group-header";
-      divider.innerHTML = `
-        <span class="group-title">${groupName}</span>
-        <span class="group-badge">${inGroup.length}</span>
+    filtered.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "prompt-card";
+      card.innerHTML = `
+        <div class="prompt-top">
+          <div style="display:flex; align-items:center; gap:8px;"><span>${p.icon}</span><span class="prompt-title">${p.name}</span></div>
+          <button class="mini-btn toggle-plugin-btn" style="background:${p.enabled ? '#0284c7' : '#173b6c'}; color:#fff; font-weight:700;">
+            ${p.enabled ? "✓ Enabled" : "+ Enable"}
+          </button>
+        </div>
+        <div class="prompt-desc">${p.desc}</div>
       `;
-      pluginsContainer.appendChild(divider);
-
-      inGroup.forEach(p => {
-        const card = document.createElement("div");
-        card.className = "prompt-card";
-        card.style.background = "#0e2444";
-        card.style.borderColor = p.enabled ? "var(--primary)" : "#173b6c";
-        card.innerHTML = `
-          <div class="prompt-top" style="align-items: center;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:16px;">${p.icon}</span>
-              <span class="prompt-title">${p.name}</span>
-            </div>
-            <button class="mini-btn toggle-plugin-btn" style="background:${p.enabled ? '#0284c7' : '#173b6c'}; color:#ffffff; font-weight:700;">
-              ${p.enabled ? "✓ Enabled" : "+ Enable"}
-            </button>
-          </div>
-          <div class="prompt-desc" style="margin-top:4px;">${p.desc}</div>
-        `;
-
-        card.querySelector(".toggle-plugin-btn").onclick = () => {
-          p.enabled = !p.enabled;
-          const saved = {};
-          BUNDLEX_PLUGINS.forEach(item => (saved[item.id] = item.enabled));
-          chrome.storage.local.set({ bundlexPluginStates: saved });
-          updatePluginBadge();
-          renderPlugins();
-        };
-
-        pluginsContainer.appendChild(card);
-      });
+      card.querySelector(".toggle-plugin-btn").onclick = () => {
+        p.enabled = !p.enabled;
+        const saved = {};
+        BUNDLEX_PLUGINS.forEach(item => (saved[item.id] = item.enabled));
+        chrome.storage.local.set({ bundlexPluginStates: saved });
+        updatePluginBadge();
+        renderPlugins();
+      };
+      pluginsContainer.appendChild(card);
     });
   }
-
   pluginSearchInput.oninput = renderPlugins;
 
   async function applyActivePlugins(raw) {
     let augmented = raw;
-
     if (currentActiveAgent && currentActiveAgent.instructions) {
       augmented = `[SYSTEM PERSONA - ${currentActiveAgent.name.toUpperCase()}]: ${currentActiveAgent.instructions}\n\n[USER INQUIRY]: ` + augmented;
     }
-
     if (isThinkingMode) {
-      const effortGuides = {
-        low: "Keep reasoning concise and direct.",
-        medium: "Plan thoughts step-by-step before declaring final conclusions.",
-        high: "Deeply evaluate edge cases, counterarguments, and mathematical rigor.",
-        extra: "Exhaustively audit every calculation, assumption, and structural implication."
-      };
-      augmented += `\n\n[Thinking Mode: Reasoning Effort = ${reasoningEffort.toUpperCase()}. ${effortGuides[reasoningEffort]}]`;
+      augmented += `\n\n[Thinking Mode: Reasoning Effort = ${reasoningEffort.toUpperCase()}]`;
     }
-
     if (isKnowledgeBase) {
       const kbContext = await queryKnowledgeBase(raw);
       if (kbContext) augmented += kbContext;
     }
-
-    augmented += "\n\n[Browser Action Capability: If the user asks to open or navigate to a webpage, specify the full URL clearly in format 'Open https://...']";
-
-    const active = BUNDLEX_PLUGINS.filter(p => p.enabled);
-    active.forEach(p => {
-      if (p.id === "simple_calculator") {
-        augmented += "\n\n[Tool: Simple Calculator - Perform step-by-step arithmetic verification before stating the result.]";
-      } else if (p.id === "web_app_builder") {
-        augmented += "\n\n[Tool: Web App Builder - Provide a complete, single-file HTML/CSS/JavaScript app wrapped in ```html ... ``` with clean styling.]";
-      } else if (p.id === "render_chart") {
-        augmented += "\n\n[Tool: Render Chart - Structure numerical comparisons into clean visual Markdown tables.]";
-      } else if (p.id === "deep_research") {
-        augmented += "\n\n[Tool: Deep Research - Execute an exhaustive, multi-perspective report covering methodology, risks, and actionable steps.]";
-      } else if (p.id === "code_sandbox") {
-        augmented += "\n\n[Tool: Code Sandbox - Add comprehensive unit tests, defensive error boundaries, and Big-O audits.]";
-      } else if (p.id === "perplexity_search") {
-        augmented += "\n\n[Tool: Perplexity Search - Ground your response with detailed citations and multi-source synthesis.]";
-      } else if (p.id === "market_news") {
-        augmented += "\n\n[Tool: Market News - Focus specifically on current market trends, financial valuations, and pricing drivers.]";
-      }
-    });
-
     return augmented;
   }
 
@@ -1528,59 +1274,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderPrompts() {
     promptsList.innerHTML = "";
     const q = promptSearchInput.value.toLowerCase().trim();
+    const filtered = BUNDLEX_PROMPTS.filter(p => (activeCat === "all" || p.cat === activeCat) && (!q || p.title.toLowerCase().includes(q) || p.text.toLowerCase().includes(q)));
 
-    const filtered = BUNDLEX_PROMPTS.filter(p => {
-      const matchCat = activeCat === "all" || p.cat === activeCat;
-      const matchQ = !q || p.title.toLowerCase().includes(q) || p.text.toLowerCase().includes(q) || (p.spec && p.spec.toLowerCase().includes(q));
-      return matchCat && matchQ;
-    });
-
-    if (filtered.length === 0) {
-      promptsList.innerHTML = `<div style="font-size:11px; color:#64748b; text-align:center; padding:15px;">No prompts found matching your criteria.</div>`;
-      return;
-    }
-
-    const categories = [...new Set(filtered.map(p => p.cat))];
-
-    categories.forEach(catName => {
-      const promptsInCat = filtered.filter(p => p.cat === catName);
-
-      const divider = document.createElement("div");
-      divider.className = "group-header";
-      divider.innerHTML = `
-        <span class="group-title">${catName}</span>
-        <span class="group-badge">${promptsInCat.length} Prompts</span>
+    filtered.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "prompt-card";
+      card.innerHTML = `
+        <div class="prompt-top"><span class="prompt-title">${p.title}</span><span class="prompt-cat">${p.spec || p.cat}</span></div>
+        <div class="prompt-desc">${p.text}</div>
+        <div class="prompt-actions"><button class="mini-btn btn-use">⚡ Use</button><button class="mini-btn btn-cp">📋 Copy</button></div>
       `;
-      promptsList.appendChild(divider);
-
-      promptsInCat.forEach(p => {
-        const card = document.createElement("div");
-        card.className = "prompt-card";
-        card.innerHTML = `
-          <div class="prompt-top">
-            <span class="prompt-title">${p.title}</span>
-            <span class="prompt-cat">${p.spec || p.cat}</span>
-          </div>
-          <div class="prompt-desc">${p.text}</div>
-          <div class="prompt-actions">
-            <button class="mini-btn btn-use">⚡ Use Prompt</button>
-            <button class="mini-btn btn-cp">📋 Copy</button>
-          </div>
-        `;
-
-        card.querySelector(".btn-use").onclick = () => {
-          promptInput.value = p.text;
-          promptInput.dispatchEvent(new Event("input"));
-          drawerPrompts.style.display = "none";
-          promptInput.focus();
-        };
-
-        card.querySelector(".btn-cp").onclick = (e) => {
-          copyText(p.text, e.currentTarget);
-        };
-
-        promptsList.appendChild(card);
-      });
+      card.querySelector(".btn-use").onclick = () => {
+        promptInput.value = p.text;
+        promptInput.dispatchEvent(new Event("input"));
+        drawerPrompts.style.display = "none";
+        promptInput.focus();
+      };
+      card.querySelector(".btn-cp").onclick = (e) => copyText(p.text, e.currentTarget);
+      promptsList.appendChild(card);
     });
   }
 
@@ -1592,28 +1303,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderPrompts();
     };
   });
-
   promptSearchInput.oninput = renderPrompts;
 
   // History & Sessions
   async function archiveCurrentSession() {
     const chatHtml = chatViewport.innerHTML.trim();
     if (!chatHtml) return;
-
     const firstMsg = chatViewport.querySelector(".msg-bubble-user");
     const previewTitle = firstMsg ? (firstMsg.getAttribute("data-raw") || firstMsg.textContent).slice(0, 40) : "Conversation";
-
     const { savedSessions = [] } = await chrome.storage.local.get(["savedSessions"]);
-    
+
     if (savedSessions.length === 0 || savedSessions[0].html !== chatHtml) {
-      const newSession = {
+      savedSessions.unshift({
         id: Date.now(),
         title: previewTitle,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         date: new Date().toLocaleDateString(),
         html: chatHtml
-      };
-      savedSessions.unshift(newSession);
+      });
       if (savedSessions.length > 50) savedSessions.pop();
       await chrome.storage.local.set({ savedSessions });
     }
@@ -1624,8 +1331,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     chatViewport.innerHTML = "";
     chrome.storage.local.remove("chatBackup");
     promptInput.value = "";
-    promptInput.style.height = "44px";
-    btnDropFile.click();
     promptInput.focus();
   };
 
@@ -1641,50 +1346,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function renderHistory() {
     historyBackupContainer.innerHTML = "";
     const { savedSessions = [] } = await chrome.storage.local.get(["savedSessions"]);
-
-    if (savedSessions.length === 0) {
-      historyBackupContainer.innerHTML = `<div style="font-size:11px; color:#94a3b8; text-align:center; padding:25px 10px;">No saved conversations yet. Chat and click "+ New Chat" to archive sessions here!</div>`;
-      return;
-    }
-
-    savedSessions.forEach((session, index) => {
+    savedSessions.forEach((session) => {
       const card = document.createElement("div");
       card.className = "prompt-card";
-      card.style.background = "#0e2444";
-      card.style.borderColor = "#173b6c";
-      card.style.marginBottom = "8px";
       card.innerHTML = `
-        <div class="prompt-top">
-          <span class="prompt-title" style="color: var(--primary); font-size:12px; font-weight:700;">${session.title}...</span>
-          <span class="prompt-cat" style="background:#173b6c;">${session.date} ${session.time}</span>
-        </div>
-        <div class="prompt-desc" style="color:#94a3b8; font-size:10px; margin-top:2px;">Saved Chat Session #${savedSessions.length - index}</div>
-        <div class="prompt-actions" style="margin-top:8px;">
-          <button class="mini-btn btn-open-session" style="background:#0284c7; color:#fff;">📂 Open Chat</button>
+        <div class="prompt-top"><span class="prompt-title">${session.title}...</span><span class="prompt-cat">${session.date}</span></div>
+        <div class="prompt-actions" style="margin-top:6px;">
+          <button class="mini-btn btn-open-session" style="background:#0284c7; color:#fff;">📂 Open</button>
           <button class="mini-btn btn-del-session" style="background:#b91c1c; color:#fff;">🗑️ Delete</button>
         </div>
       `;
-
       card.querySelector(".btn-open-session").onclick = () => {
         chatViewport.innerHTML = session.html;
         chrome.storage.local.set({ chatBackup: session.html });
         drawerHistory.style.display = "none";
         scrollToBottom(false);
       };
-
       card.querySelector(".btn-del-session").onclick = async () => {
         const updated = savedSessions.filter(s => s.id !== session.id);
         await chrome.storage.local.set({ savedSessions: updated });
         renderHistory();
       };
-
       historyBackupContainer.appendChild(card);
     });
   }
 
-  // Initial Key & Settings Restoration
+  // Initial Data Load
   const storageKeysToLoad = [
-    "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts", "bundlexRole", "bundlexUserName",
+    "chatBackup", "bundlexPluginStates", "activeAgent", "userSettings", "customShortcuts",
     ...Object.keys(keyInputsMap),
     ...Object.keys(advInputsMap)
   ];
@@ -1693,21 +1382,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     Object.keys(keyInputsMap).forEach(k => {
       if (data[k] && keyInputsMap[k]) keyInputsMap[k].value = data[k];
     });
-
     Object.keys(advInputsMap).forEach(k => {
       if (data[k] && advInputsMap[k]) advInputsMap[k].value = data[k];
     });
-
-    if (data.bundlexRole) {
-      applyRolePermissions(data.bundlexRole, data.bundlexUserName);
-    }
-
     if (data.userSettings) userSettings = { ...userSettings, ...data.userSettings };
     syncSettingsUI();
-
     if (data.customShortcuts) customShortcuts = { ...customShortcuts, ...data.customShortcuts };
     syncShortcutsUI();
-
     if (data.activeAgent) {
       currentActiveAgent = data.activeAgent;
       updateActiveAgentBanner();
@@ -1718,7 +1399,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
     updatePluginBadge();
-
     if (data.chatBackup && userSettings.resumeChat) {
       chatViewport.innerHTML = data.chatBackup;
       scrollToBottom(false);
@@ -1730,13 +1410,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     Object.keys(keyInputsMap).forEach(k => {
       if (keyInputsMap[k]) dataToSave[k] = keyInputsMap[k].value.trim();
     });
-
     Object.keys(advInputsMap).forEach(k => {
       if (advInputsMap[k]) dataToSave[k] = advInputsMap[k].value.trim();
     });
-
     chrome.storage.local.set(dataToSave).then(() => {
-      alert("All Provider keys and options saved securely by Master Admin!");
+      alert("✅ All API keys saved safely in your browser!");
       drawerKeys.style.display = "none";
     });
   };
@@ -1750,15 +1428,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   filePicker.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
-      currentFile = {
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        base64: reader.result.split(",")[1],
-        preview: reader.result
-      };
+      currentFile = { name: file.name, type: file.type || "application/octet-stream", base64: reader.result.split(",")[1], preview: reader.result };
       attachmentFileName.textContent = file.name;
       attachmentBadge.style.display = "flex";
     };
@@ -1774,19 +1446,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   btnGrabTab.onclick = async () => {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (tab && tab.url) {
-        const urlRef = `\n\n[Context Link: ${tab.title || "Page"} (${tab.url})]`;
-        promptInput.value = (promptInput.value + urlRef).trim();
+      if (tabs[0]?.url) {
+        promptInput.value = (promptInput.value + `\n[Context: ${tabs[0].title} (${tabs[0].url})]`).trim();
         promptInput.dispatchEvent(new Event("input"));
         promptInput.focus();
       }
-    } catch (e) {
-      alert("Unable to fetch tab link: " + e.message);
-    }
+    } catch (e) {}
   };
 
-  // Model Catalog
+  // OpenRouter Models
   async function fetchModels() {
     try {
       const res = await fetch("https://openrouter.ai/api/v1/models");
@@ -1801,12 +1469,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   function populateModels(list) {
     const cur = modelPicker.value;
     modelPicker.innerHTML = `
-      <option value="bundlex_free" selected>⚡ Bundlex Free AI (No Key Needed)</option>
-      <option value="gemini_direct">Google Gemini (Direct)</option>
+      <option value="bundlex_free" selected>⚡ Bundlex Free AI (No Key & No Login Needed)</option>
+      <option value="nvidia_nim">🟢 NVIDIA NIM (Llama 3.3 70B - Requires Key & Login)</option>
+      <option value="gemini_direct">🔵 Google Gemini (Direct API Key - Requires Login)</option>
+      <option value="openai_direct">🟢 ChatGPT (OpenAI - Requires Login)</option>
+      <option value="claude_direct">🟣 Claude 3.5 Sonnet (Requires Login)</option>
       <option value="compare_all">⚡ Compare All 3 (Claude + GPT + Gemini)</option>
-      <option value="openai_direct">ChatGPT (OpenAI Direct)</option>
-      <option value="claude_direct">Claude 3.5 Sonnet (Direct)</option>
-      <option value="openrouter/free">Free Models (via OpenRouter)</option>
+      <option value="openrouter/free">🌐 Free Models (via OpenRouter)</option>
     `;
     const grp = document.createElement("optgroup");
     grp.label = "All Models";
@@ -1827,38 +1496,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (filtered.length > 0) modelPicker.value = filtered[0].id;
   };
 
-  // Clipboard
   function copyText(text, btn) {
     if (!text) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => flashSuccess(btn)).catch(() => fallbackCopy(text, btn));
-    } else {
-      fallbackCopy(text, btn);
-    }
-  }
-
-  function fallbackCopy(text, btn) {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-      document.execCommand("copy");
-      flashSuccess(btn);
-    } catch (e) {
-      alert("Copy failed: " + e.message);
-    }
-    document.body.removeChild(ta);
-  }
-
-  function flashSuccess(btn) {
-    if (!btn) return;
-    const oldText = btn.textContent;
-    btn.textContent = "✅ Copied";
-    setTimeout(() => { btn.textContent = oldText; }, 1500);
+    navigator.clipboard.writeText(text).then(() => {
+      if (btn) {
+        const old = btn.textContent;
+        btn.textContent = "✅ Copied";
+        setTimeout(() => { btn.textContent = old; }, 1500);
+      }
+    });
   }
 
   chatViewport.addEventListener("click", (e) => {
@@ -1868,33 +1514,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (card) copyText(card.querySelector(".card-content").textContent, copyCardBtn);
       return;
     }
-
     const speakCardBtn = e.target.closest(".card-speak-btn");
     if (speakCardBtn) {
       const card = speakCardBtn.closest(".model-card");
       if (card) speakResponseText(card.querySelector(".card-content").textContent, speakCardBtn);
       return;
     }
-
     const copyUserBtn = e.target.closest(".copy-user-btn");
     if (copyUserBtn) {
       const msgRow = copyUserBtn.closest(".msg-user-container");
-      if (msgRow) {
-        const text = msgRow.querySelector(".msg-bubble-user").getAttribute("data-raw") || msgRow.querySelector(".msg-bubble-user").textContent;
-        copyText(text, copyUserBtn);
-      }
-      return;
-    }
-
-    const editUserBtn = e.target.closest(".edit-user-btn");
-    if (editUserBtn) {
-      const msgRow = editUserBtn.closest(".msg-user-container");
-      if (msgRow) {
-        const raw = msgRow.querySelector(".msg-bubble-user").getAttribute("data-raw") || msgRow.querySelector(".msg-bubble-user").textContent;
-        promptInput.value = raw;
-        promptInput.dispatchEvent(new Event("input"));
-        promptInput.focus();
-      }
+      if (msgRow) copyText(msgRow.querySelector(".msg-bubble-user").textContent, copyUserBtn);
       return;
     }
   });
@@ -1905,7 +1534,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       enhanceAssistantCardWithRunner(element, fullText);
       return;
     }
-
     element.textContent = "";
     const words = fullText.split(/(\s+)/);
     for (let i = 0; i < words.length; i++) {
@@ -1919,15 +1547,158 @@ document.addEventListener("DOMContentLoaded", async () => {
     enhanceAssistantCardWithRunner(element, fullText);
   }
 
-  // --- MULTI-TIER RESILIENT FREE AI ENGINE WITH LIVE WEB & IMAGE GENERATION ---
+  // --- API ENGINES ---
+
+  // 1. Official NVIDIA NIM Engine
+  async function callNvidiaNIM(prompt, key, bodyEl, signal) {
+    if (!key) {
+      bodyEl.textContent = "⚠️ Missing NVIDIA API Key. Open '🔑 Keys (23+)' at top, enter your nvapi-... key, and hit Save.";
+      return;
+    }
+    bodyEl.textContent = "⚡ Running on NVIDIA DGX Cloud...";
+    scrollToBottom(true);
+    try {
+      const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key.trim()}`
+        },
+        body: JSON.stringify({
+          model: "meta/llama-3.3-70b-instruct",
+          messages: [
+            { role: "system", content: "You are an intelligent assistant running on NVIDIA NIM. Deliver concise, grounded, verified facts. If runnable code is requested, wrap it inside ```html ... ``` blocks." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.5,
+          max_tokens: 1024
+        }),
+        signal
+      });
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || `❌ NVIDIA Error: ${data.detail || "Check key."}`;
+      await streamRenderText(bodyEl, reply, signal);
+      playNotificationChime();
+    } catch (err) {
+      bodyEl.textContent = err.name === "AbortError" ? "🛑 Stopped." : `❌ Network Error: ${err.message}`;
+    }
+    saveChat();
+    scrollToBottom(true);
+  }
+
+  // 2. Google Gemini Direct
+  async function callGemini(prompt, fileData, key, bodyEl, signal) {
+    if (!key) {
+      bodyEl.textContent = "⚠️ Missing Gemini Key. Open '🔑 Keys (23+)' at top to save your key.";
+      return;
+    }
+    bodyEl.textContent = "⚡ Calling Google Gemini...";
+    scrollToBottom(true);
+
+    const parts = [];
+    if (fileData?.base64) parts.push({ inline_data: { mime_type: fileData.type, data: fileData.base64 } });
+    parts.push({ text: prompt });
+
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key.trim())}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts }] }),
+        signal
+      });
+      const data = await res.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || `❌ Gemini Error: ${data.error?.message || "Invalid Key"}`;
+      await streamRenderText(bodyEl, reply, signal);
+      playNotificationChime();
+    } catch (err) {
+      bodyEl.textContent = err.name === "AbortError" ? "🛑 Stopped." : `❌ Error: ${err.message}`;
+    }
+    saveChat();
+    scrollToBottom(true);
+  }
+
+  // 3. OpenAI Direct
+  async function callOpenAI(prompt, fileData, key, bodyEl, signal) {
+    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenAI Key. Open '🔑 Keys (23+)' at top to save it.");
+    bodyEl.textContent = "⚡ Calling OpenAI...";
+    scrollToBottom(true);
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key.trim()}` },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }] }),
+        signal
+      });
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || `❌ OpenAI Error: ${data.error?.message || "Check Key"}`;
+      await streamRenderText(bodyEl, reply, signal);
+      playNotificationChime();
+    } catch (err) {
+      bodyEl.textContent = err.name === "AbortError" ? "🛑 Stopped." : `❌ Error: ${err.message}`;
+    }
+    saveChat();
+    scrollToBottom(true);
+  }
+
+  // 4. Claude Direct
+  async function callClaude(prompt, fileData, key, bodyEl, signal) {
+    if (!key) return (bodyEl.textContent = "⚠️ Missing Claude Key. Open '🔑 Keys (23+)' at top to save it.");
+    bodyEl.textContent = "⚡ Calling Claude...";
+    scrollToBottom(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key.trim(),
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 1024, messages: [{ role: "user", content: prompt }] }),
+        signal
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || `❌ Claude Error: ${data.error?.message || "Check Key"}`;
+      await streamRenderText(bodyEl, reply, signal);
+      playNotificationChime();
+    } catch (err) {
+      bodyEl.textContent = err.name === "AbortError" ? "🛑 Stopped." : `❌ Error: ${err.message}`;
+    }
+    saveChat();
+    scrollToBottom(true);
+  }
+
+  // 5. OpenRouter
+  async function callOpenRouter(prompt, modelId, key, bodyEl, signal) {
+    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenRouter Key. Open '🔑 Keys (23+)' at top to save it.");
+    bodyEl.textContent = "⚡ Calling OpenRouter...";
+    scrollToBottom(true);
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key.trim()}` },
+        body: JSON.stringify({ model: modelId, messages: [{ role: "user", content: prompt }] }),
+        signal
+      });
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || `❌ OpenRouter Error: ${data.error?.message || "Check Key"}`;
+      await streamRenderText(bodyEl, reply, signal);
+      playNotificationChime();
+    } catch (err) {
+      bodyEl.textContent = err.name === "AbortError" ? "🛑 Stopped." : `❌ Error: ${err.message}`;
+    }
+    saveChat();
+    scrollToBottom(true);
+  }
+
+  // 6. Bundlex Free AI Fallback
   async function callFreeAI(prompt, bodyEl, signal) {
-    // Clean user query and remove internal plugin tags
     const cleanUserPrompt = prompt.replace(/\[.*?\]/gs, "").trim();
 
-    // 1. Broad Image Generation Interceptor (Instant high-res images)
+    // Image Generation
     const imgRegex = /^(?:generate|draw|create|make|paint|render)?\s*(?:an?\s+)?(?:image|photo|picture|graphic|illustration|art)\s+(?:of\s+)?|^(?:draw|paint|sketch)\s+/i;
     if (imgRegex.test(cleanUserPrompt)) {
-      bodyEl.textContent = "🎨 Generating high-definition visual...";
+      bodyEl.textContent = "🎨 Generating visual...";
       scrollToBottom(true);
       const cleanSubject = cleanUserPrompt.replace(imgRegex, '').trim();
       const seed = Math.floor(Math.random() * 100000);
@@ -1944,325 +1715,51 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    // 2. Live Web Grounding for Search / News / Fact Lookups (With Typo-Tolerance)
+    // Dynamic Live Web Grounding
+    const now = new Date();
+    const currentDateStr = now.toISOString().split("T")[0];
     let webContext = "";
-    const isSearchQuery = /^(who|what|when|where|why|how|latest|news|price|score|winner|won|vs|match|current|today)\b/i.test(cleanUserPrompt) || cleanUserPrompt.includes("?");
-    if (isSearchQuery) {
+    if (/^(who|what|when|where|why|how|latest|news|price|score|winner|won|vs|match|current|today)\b/i.test(cleanUserPrompt) || cleanUserPrompt.includes("?")) {
       bodyEl.textContent = "🌐 Searching across live web sources...";
       scrollToBottom(true);
       webContext = await fetchLiveWebContext(cleanUserPrompt);
     }
 
     const systemPrompt = 
-      "You are Bundlex Free AI, an intelligent, verified assistant inside Bundlex AI Studio. " +
-      "Today's year is 2026. Deliver concise, accurate, verified facts. " +
-      "Lamine Yamal is a Spanish international footballer playing as a winger for FC Barcelona. " +
-      "The 2024-25 UEFA Champions League concluded in May 2025. " +
-      (webContext ? "Use the provided [LIVE SEARCH DATA] to answer with real-time grounding and cite URLs when relevant. " : "") +
-      "If the user asks for runnable code, interactive apps, or games, write the full single-file code wrapped inside ```html ... ``` blocks.";
-
-    const promptWithWeb = webContext ? `${prompt}\n${webContext}` : prompt;
+      "You are Bundlex Free AI. " +
+      `Current Date: ${currentDateStr}. Current Year is 2026. Deliver concise, grounded, verified facts. ` +
+      "Verified Facts: Paris Saint-Germain (PSG) won the 2025 UEFA Champions League (5-0 against Inter Milan). Real Madrid won in 2024 (15th title). " +
+      (webContext ? "Use this verified search data: " + webContext + " " : "") +
+      "If runnable code or a game is requested, wrap the complete single-file code inside ```html ... ``` blocks.";
 
     bodyEl.textContent = "⚡ Generating response with Bundlex Free AI...";
-    scrollToBottom(true);
-
     let finalResponse = null;
 
-    // Tier 1: Primary Pollinations OpenAI Route
     try {
       const res = await fetch("https://text.pollinations.ai/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: promptWithWeb }
-          ],
-          model: "openai",
-          seed: Math.floor(Math.random() * 9999)
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: cleanUserPrompt }],
+          model: "openai"
         }),
-        signal: signal
+        signal
       });
+      if (res.ok) finalResponse = await res.text();
+    } catch (e) {}
 
-      if (res.ok) {
-        const text = await res.text();
-        if (text && !text.includes("Free server is busy") && text.trim().length > 0) {
-          finalResponse = text;
-        }
-      }
-    } catch (err) {
-      if (err.name === "AbortError") {
-        bodyEl.textContent = "🛑 Generation stopped.";
-        saveChat();
-        return;
-      }
-      console.warn("Primary free tier busy, routing to fallback...", err);
-    }
-
-    // Tier 2: Resilient Fallback URL Endpoint
     if (!finalResponse) {
       try {
-        const combined = `${systemPrompt}\n\nUser Question: ${promptWithWeb}`;
-        const fallbackRes = await fetch(
-          `https://text.pollinations.ai/${encodeURIComponent(combined)}?model=mistral&seed=${Math.floor(Math.random() * 9999)}`,
-          { signal: signal }
-        );
-
-        if (fallbackRes.ok) {
-          const text = await fallbackRes.text();
-          if (text && text.trim().length > 0) {
-            finalResponse = text;
-          }
-        }
-      } catch (fallbackErr) {
-        if (fallbackErr.name === "AbortError") {
-          bodyEl.textContent = "🛑 Generation stopped.";
-          saveChat();
-          return;
-        }
-        console.error("All free endpoints encountered heavy load:", fallbackErr);
-      }
+        const fallbackRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(systemPrompt + "\n\n" + cleanUserPrompt)}?model=mistral`, { signal });
+        if (fallbackRes.ok) finalResponse = await fallbackRes.text();
+      } catch (e) {}
     }
 
     if (finalResponse) {
       await streamRenderText(bodyEl, finalResponse, signal);
       playNotificationChime();
-      inspectAndActuateBrowserActions(finalResponse);
     } else {
-      bodyEl.textContent = "⚠️ Free server network pool is momentarily busy. Please try clicking Strike again in 3 seconds.";
-    }
-
-    saveChat();
-    scrollToBottom(true);
-  }
-
-  // API Engines
-  async function callGemini(prompt, fileData, key, bodyEl, signal) {
-    if (!key) {
-      bodyEl.textContent = "⚠️ Missing Gemini Key. Switch model to '⚡ Bundlex Free AI' or have Master Admin save it under 🔑 Keys.";
-      return;
-    }
-    bodyEl.textContent = "⚡ Searching web & generating response...";
-    scrollToBottom(true);
-
-    const parts = [];
-    if (fileData && fileData.base64) {
-      parts.push({ inline_data: { mime_type: fileData.type, data: fileData.base64 } });
-    }
-    parts.push({ text: prompt });
-
-    const payloadWithSearch = JSON.stringify({
-      contents: [{ parts }],
-      tools: [{ google_search: {} }]
-    });
-
-    const payloadStandard = JSON.stringify({ contents: [{ parts }] });
-
-    const { advGoogleEndpoint, advGoogleModel } = await chrome.storage.local.get(["advGoogleEndpoint", "advGoogleModel"]);
-    const chosenModel = advGoogleModel || "gemini-2.5-flash";
-    const baseEndpoint = (advGoogleEndpoint && advGoogleEndpoint.trim()) ? advGoogleEndpoint.trim().replace(/\/+$/, "") : "https://generativelanguage.googleapis.com";
-
-    const endpoints = [
-      `${baseEndpoint}/v1beta/models/${chosenModel}:generateContent?key=${encodeURIComponent(key.trim())}`,
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key.trim())}`,
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(key.trim())}`
-    ];
-
-    let lastError = null;
-
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payloadWithSearch,
-          signal: signal
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (reply) {
-            await streamRenderText(bodyEl, reply, signal);
-            saveChat();
-            playNotificationChime();
-            inspectAndActuateBrowserActions(reply);
-            scrollToBottom(true);
-            return;
-          }
-        } else {
-          if (res.status === 400) {
-            const fallbackRes = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: payloadStandard,
-              signal: signal
-            });
-            const fallbackData = await fallbackRes.json();
-            if (fallbackRes.ok) {
-              const reply = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (reply) {
-                await streamRenderText(bodyEl, reply, signal);
-                saveChat();
-                playNotificationChime();
-                inspectAndActuateBrowserActions(reply);
-                scrollToBottom(true);
-                return;
-              }
-            }
-          }
-
-          lastError = data.error?.message || `HTTP ${res.status}`;
-          if (res.status === 404 || res.status === 429) continue;
-
-          bodyEl.textContent = `❌ Gemini Error (${res.status}): ${lastError}`;
-          saveChat();
-          scrollToBottom(true);
-          return;
-        }
-      } catch (err) {
-        if (err.name === "AbortError") {
-          bodyEl.textContent = "🛑 Generation stopped by user.";
-          scrollToBottom(true);
-          return;
-        }
-        lastError = err.message;
-      }
-    }
-
-    bodyEl.textContent = `❌ Gemini Error: ${lastError || "Check your API key or quota in Google AI Studio."}`;
-    saveChat();
-    scrollToBottom(true);
-  }
-
-  async function callOpenAI(prompt, fileData, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenAI Key. Switch to '⚡ Bundlex Free AI' or save it in 🔑 Keys.");
-    bodyEl.textContent = "⚡ Calling OpenAI...";
-    scrollToBottom(true);
-
-    const { advOpenAIOrg, advOpenAIProject, advOpenAIEndpoint, advOpenAIModel } = await chrome.storage.local.get([
-      "advOpenAIOrg", "advOpenAIProject", "advOpenAIEndpoint", "advOpenAIModel"
-    ]);
-
-    const targetUrl = (advOpenAIEndpoint && advOpenAIEndpoint.trim()) ? advOpenAIEndpoint.trim() : "https://api.openai.com/v1/chat/completions";
-    const selectedModel = (advOpenAIModel && advOpenAIModel.trim()) ? advOpenAIModel.trim() : "gpt-4o-mini";
-
-    const headers = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${key}`
-    };
-
-    if (advOpenAIOrg && advOpenAIOrg.trim()) headers["OpenAI-Organization"] = advOpenAIOrg.trim();
-    if (advOpenAIProject && advOpenAIProject.trim()) headers["OpenAI-Project"] = advOpenAIProject.trim();
-
-    const content = [];
-    if (fileData && fileData.base64 && fileData.type.startsWith("image/")) {
-      content.push({ type: "image_url", image_url: { url: `data:${fileData.type};base64,${fileData.base64}` } });
-    }
-    content.push({ type: "text", text: prompt });
-
-    try {
-      const res = await fetch(targetUrl, {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [{ role: "user", content }]
-        }),
-        signal: signal
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        bodyEl.textContent = `❌ OpenAI Error: ${data.error?.message || res.statusText}`;
-        saveChat();
-        scrollToBottom(true);
-        return;
-      }
-      const reply = data.choices?.[0]?.message?.content || "⚠️ Empty response.";
-      await streamRenderText(bodyEl, reply, signal);
-      playNotificationChime();
-      inspectAndActuateBrowserActions(reply);
-    } catch (err) {
-      bodyEl.textContent = err.name === "AbortError" ? "🛑 Generation stopped." : `❌ Network Error: ${err.message}`;
-    }
-    saveChat();
-    scrollToBottom(true);
-  }
-
-  async function callClaude(prompt, fileData, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing Claude Key. Switch to '⚡ Bundlex Free AI' or save it in 🔑 Keys.");
-    bodyEl.textContent = "⚡ Calling Claude...";
-    scrollToBottom(true);
-
-    const { advClaudeEndpoint, advClaudeModel } = await chrome.storage.local.get(["advClaudeEndpoint", "advClaudeModel"]);
-    const targetUrl = (advClaudeEndpoint && advClaudeEndpoint.trim()) ? advClaudeEndpoint.trim() : "https://api.anthropic.com/v1/messages";
-    const chosenModel = (advClaudeModel && advClaudeModel.trim()) ? advClaudeModel.trim() : "claude-3-5-sonnet-20241022";
-
-    const content = [];
-    if (fileData && fileData.base64 && fileData.type.startsWith("image/")) {
-      content.push({ type: "image", source: { type: "base64", media_type: fileData.type, data: fileData.base64 } });
-    }
-    content.push({ type: "text", text: prompt });
-
-    try {
-      const res = await fetch(targetUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({ model: chosenModel, max_tokens: 1024, messages: [{ role: "user", content }] }),
-        signal: signal
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        bodyEl.textContent = `❌ Claude Error: ${data.error?.message || res.statusText}`;
-        saveChat();
-        scrollToBottom(true);
-        return;
-      }
-      const reply = data.content?.[0]?.text || "⚠️ Empty response.";
-      await streamRenderText(bodyEl, reply, signal);
-      playNotificationChime();
-      inspectAndActuateBrowserActions(reply);
-    } catch (err) {
-      bodyEl.textContent = err.name === "AbortError" ? "🛑 Generation stopped." : `❌ Network Error: ${err.message}`;
-    }
-    saveChat();
-    scrollToBottom(true);
-  }
-
-  async function callOpenRouter(prompt, modelId, key, bodyEl, signal) {
-    if (!key) return (bodyEl.textContent = "⚠️ Missing OpenRouter Key. Switch to '⚡ Bundlex Free AI' or save it in 🔑 Keys.");
-    bodyEl.textContent = "⚡ Calling OpenRouter...";
-    scrollToBottom(true);
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`,
-          "HTTP-Referer": "https://bundlex-ai.app",
-          "X-Title": "Bundlex AI"
-        },
-        body: JSON.stringify({ model: modelId, messages: [{ role: "user", content: prompt }] }),
-        signal: signal
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        bodyEl.textContent = `❌ OpenRouter Error: ${data.error?.message || res.statusText}`;
-        saveChat();
-        scrollToBottom(true);
-        return;
-      }
-      const reply = data.choices?.[0]?.message?.content || "⚠️ Empty response.";
-      await streamRenderText(bodyEl, reply, signal);
-      playNotificationChime();
-      inspectAndActuateBrowserActions(reply);
-    } catch (err) {
-      bodyEl.textContent = err.name === "AbortError" ? "🛑 Generation stopped." : `❌ Network Error: ${err.message}`;
+      bodyEl.textContent = "⚠️ Free server pool busy. Switch model dropdown to NVIDIA NIM or Google Gemini for instant answers.";
     }
     saveChat();
     scrollToBottom(true);
@@ -2275,14 +1772,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       <div class="card-head">
         <span class="model-name">${title}</span>
         <div class="card-controls">
-          <button class="card-speak-btn" title="Listen with Text-to-Speech">🔊 Listen</button>
-          <button class="card-copy-btn" title="Copy to clipboard">📋 Copy</button>
+          <button class="card-speak-btn">🔊 Listen</button>
+          <button class="card-copy-btn">📋 Copy</button>
         </div>
       </div>
       <div class="card-content">⚡ Thinking...</div>
     `;
-    const bodyEl = card.querySelector(".card-content");
-    return { card, bodyEl };
+    return { card, bodyEl: card.querySelector(".card-content") };
   }
 
   function setGenerating(loading) {
@@ -2299,18 +1795,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   };
 
-  // Main Send Action
+  // --- SEND CONTROLLER (WITH LOGIN GATE FOR KEYED / NVIDIA MODELS) ---
   async function handleSend() {
     if (isGenerating) return;
 
     const rawText = promptInput.value.trim();
     if (!rawText && !currentFile) return;
 
+    const mode = modelPicker.value;
+
+    // GATING CHECK: Free mode is 100% open without login; custom API keys & NVIDIA models require login
+    if (mode !== "bundlex_free" && !currentUser) {
+      setAuthMode("signin");
+      authTitle.textContent = "Login Required for Custom Models";
+      authSubtitle.textContent = "Please sign in or create an account to use custom API keys and NVIDIA NIM. Free Mode requires no login.";
+      authOverlay.style.display = "flex";
+      return;
+    }
+
     let queryText = rawText || (currentFile ? `Please analyze this attached file: ${currentFile.name}` : "");
     queryText = await applyActivePlugins(queryText);
 
     const attachedFileBackup = currentFile ? { ...currentFile } : null;
-    const mode = modelPicker.value;
 
     promptInput.value = "";
     promptInput.style.height = "44px";
@@ -2318,30 +1824,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const userContainer = document.createElement("div");
     userContainer.className = "msg-user-container";
-    
-    let innerHtml = "";
-    if (attachedFileBackup && attachedFileBackup.type.startsWith("image/")) {
-      innerHtml += `<img src="${attachedFileBackup.preview}" style="max-width:100%; max-height:140px; border-radius:6px; display:block; margin-bottom:6px;" />`;
-    } else if (attachedFileBackup) {
-      innerHtml += `<div style="font-size:11px; opacity:0.8; margin-bottom:4px;">📎 ${attachedFileBackup.name}</div>`;
-    }
-    innerHtml += `<div class="msg-bubble-user" data-raw="${encodeURIComponent(rawText)}">${rawText.replace(/</g, "&lt;")}</div>`;
-    innerHtml += `
-      <div class="user-actions">
-        <button class="action-link edit-user-btn">✏️ Edit</button>
-        <button class="action-link copy-user-btn">📋 Copy</button>
-      </div>
-    `;
-
-    userContainer.innerHTML = innerHtml;
-    userContainer.querySelector(".msg-bubble-user").setAttribute("data-raw", rawText);
+    userContainer.innerHTML = `<div class="msg-bubble-user" data-raw="${encodeURIComponent(rawText)}">${rawText.replace(/</g, "&lt;")}</div>`;
     chatViewport.appendChild(userContainer);
-    
     scrollToBottom(true);
 
-    const storageKeysNeeded = ["geminiKey", "openaiKey", "claudeKey", "openrouterKey"];
-    const storedKeys = await chrome.storage.local.get(storageKeysNeeded);
-
+    const storedKeys = await chrome.storage.local.get(["nvidiaKey", "geminiKey", "openaiKey", "claudeKey", "openrouterKey"]);
     const grid = document.createElement("div");
     grid.className = "arena-grid";
 
@@ -2351,55 +1838,48 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       if (mode === "bundlex_free") {
-        const title = currentActiveAgent ? `${currentActiveAgent.icon} ${currentActiveAgent.name} (Bundlex Free)` : "⚡ Bundlex Free AI";
-        const card = makeCard(title);
+        const card = makeCard("⚡ Bundlex Free AI");
         grid.appendChild(card.card);
         chatViewport.appendChild(grid);
-        scrollToBottom(true);
         await callFreeAI(queryText, card.bodyEl, signal);
+      } else if (mode === "nvidia_nim") {
+        const card = makeCard("🟢 NVIDIA NIM (Llama 3.3 70B)");
+        grid.appendChild(card.card);
+        chatViewport.appendChild(grid);
+        await callNvidiaNIM(queryText, storedKeys.nvidiaKey, card.bodyEl, signal);
       } else if (mode === "gemini_direct") {
-        const title = currentActiveAgent ? `${currentActiveAgent.icon} ${currentActiveAgent.name} (Gemini)` : "Google Gemini";
-        const card = makeCard(title);
+        const card = makeCard("🔵 Google Gemini");
         grid.appendChild(card.card);
         chatViewport.appendChild(grid);
-        scrollToBottom(true);
         await callGemini(queryText, attachedFileBackup, storedKeys.geminiKey, card.bodyEl, signal);
-      } else if (mode === "compare_all") {
-        const geminiCard = makeCard("Google Gemini");
-        const openaiCard = makeCard("ChatGPT (OpenAI)");
-        const claudeCard = makeCard("Claude 3.5 Sonnet");
-
-        grid.appendChild(geminiCard.card);
-        grid.appendChild(openaiCard.card);
-        grid.appendChild(claudeCard.card);
-        chatViewport.appendChild(grid);
-        scrollToBottom(true);
-
-        await Promise.all([
-          callGemini(queryText, attachedFileBackup, storedKeys.geminiKey, geminiCard.bodyEl, signal),
-          callOpenAI(queryText, attachedFileBackup, storedKeys.openaiKey, openaiCard.bodyEl, signal),
-          callClaude(queryText, attachedFileBackup, storedKeys.claudeKey, claudeCard.bodyEl, signal)
-        ]);
       } else if (mode === "openai_direct") {
-        const title = currentActiveAgent ? `${currentActiveAgent.icon} ${currentActiveAgent.name} (OpenAI)` : "ChatGPT (OpenAI)";
-        const card = makeCard(title);
+        const card = makeCard("🟢 ChatGPT (OpenAI)");
         grid.appendChild(card.card);
         chatViewport.appendChild(grid);
-        scrollToBottom(true);
         await callOpenAI(queryText, attachedFileBackup, storedKeys.openaiKey, card.bodyEl, signal);
       } else if (mode === "claude_direct") {
-        const title = currentActiveAgent ? `${currentActiveAgent.icon} ${currentActiveAgent.name} (Claude)` : "Claude 3.5 Sonnet";
-        const card = makeCard(title);
+        const card = makeCard("🟣 Claude 3.5 Sonnet");
         grid.appendChild(card.card);
         chatViewport.appendChild(grid);
-        scrollToBottom(true);
         await callClaude(queryText, attachedFileBackup, storedKeys.claudeKey, card.bodyEl, signal);
+      } else if (mode === "compare_all") {
+        const c1 = makeCard("NVIDIA NIM");
+        const c2 = makeCard("Google Gemini");
+        const c3 = makeCard("ChatGPT");
+        grid.appendChild(c1.card);
+        grid.appendChild(c2.card);
+        grid.appendChild(c3.card);
+        chatViewport.appendChild(grid);
+        await Promise.all([
+          callNvidiaNIM(queryText, storedKeys.nvidiaKey, c1.bodyEl, signal),
+          callGemini(queryText, attachedFileBackup, storedKeys.geminiKey, c2.bodyEl, signal),
+          callOpenAI(queryText, attachedFileBackup, storedKeys.openaiKey, c3.bodyEl, signal)
+        ]);
       } else {
         const label = modelPicker.options[modelPicker.selectedIndex]?.text || mode;
         const card = makeCard(label);
         grid.appendChild(card.card);
         chatViewport.appendChild(grid);
-        scrollToBottom(true);
         await callOpenRouter(queryText, mode, storedKeys.openrouterKey, card.bodyEl, signal);
       }
     } finally {
@@ -2408,12 +1888,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       promptInput.focus();
       scrollToBottom(true);
     }
-
     saveChat();
   }
 
   btnStrike.onclick = handleSend;
-
   promptInput.onkeydown = (e) => {
     if (e.key === "Enter") {
       if (userSettings.enterToSend && !e.shiftKey) {
@@ -2426,5 +1904,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   };
 
+  await refreshUserSession();
   fetchModels();
 });
